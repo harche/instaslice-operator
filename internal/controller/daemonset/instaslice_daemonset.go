@@ -41,6 +41,11 @@ import (
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
+	cdi "tags.cncf.io/container-device-interface/pkg/cdi"
+	cdipkg "tags.cncf.io/container-device-interface/specs-go"
+
+	// cdipkg "tags.cncf.io/container-device-interface/specs-go"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -246,9 +251,33 @@ func (r *InstaSliceDaemonsetReconciler) Reconcile(ctx context.Context, req ctrl.
 				}
 				for migUuid, migDevice := range createdMigInfos {
 					if migDevice.start == allocations.Start && migDevice.uuid == allocations.GPUUUID && giProfileInfo.Id == migDevice.giInfo.ProfileId {
-						if err := r.createConfigMap(ctx, migUuid, existingAllocations.Namespace, allocations.Resourceidentifier); err != nil {
-							return ctrl.Result{RequeueAfter: controller.Requeue1sDelay}, nil
+
+						// pod, err := r.kubeClient.CoreV1().Pods(allocations.Namespace).Get(context.TODO(), allocations.PodName, metav1.GetOptions{})
+						// if err != nil {
+						// 	return ctrl.Result{}, err
+						// }
+
+						// pod.Annotations["instaslice.nvidia.device"] = migUuid
+
+						// _, err = r.kubeClient.CoreV1().Pods(allocations.Namespace).Update(context.TODO(), pod, metav1.UpdateOptions{})
+						// if err != nil {
+						// 	return ctrl.Result{}, err
+						// }
+						spec := createCDISpec(migUuid)
+
+						specName, err := cdi.GenerateNameForSpec(spec)
+						if err != nil {
+							return ctrl.Result{}, err
 						}
+
+						cache := cdi.GetDefaultCache()
+						if err := cache.WriteSpec(spec, specName); err != nil {
+							return ctrl.Result{}, err
+						}
+
+						// if err := r.createConfigMap(ctx, migUuid, existingAllocations.Namespace, allocations.Resourceidentifier); err != nil {
+						// 	return ctrl.Result{RequeueAfter: controller.Requeue1sDelay}, nil
+						// }
 						log.Info("done creating mig slice for ", "pod", allocations.PodName, "parentgpu", allocations.GPUUUID, "miguuid", migUuid)
 						break
 					}
@@ -721,9 +750,13 @@ func (r *InstaSliceDaemonsetReconciler) createConfigMap(ctx context.Context, mig
 				Name:      resourceIdentifier,
 				Namespace: namespace,
 			},
+			// Data: map[string]string{
+			// 	"NVIDIA_VISIBLE_DEVICES": migGPUUUID,
+			// 	"CUDA_VISIBLE_DEVICES":   migGPUUUID,
+			// },
 			Data: map[string]string{
-				"NVIDIA_VISIBLE_DEVICES": migGPUUUID,
-				"CUDA_VISIBLE_DEVICES":   migGPUUUID,
+				"TEST_FAKE_1": migGPUUUID,
+				"TEST_FAKE_2": migGPUUUID,
 			},
 		}
 		if err := r.Create(ctx, configMapToCreate); err != nil {
@@ -976,4 +1009,17 @@ func (r *InstaSliceDaemonsetReconciler) checkConfigMapExists(ctx context.Context
 	}
 	log.Info("ConfigMap exists", "name", name, "namespace", namespace)
 	return true, nil
+}
+
+func createCDISpec(migGPUUUID string) *cdipkg.Spec {
+	return &cdipkg.Spec{
+		Version: cdipkg.CurrentVersion,
+		Kind:    "instaslice.redhat.com/device",
+		ContainerEdits: cdipkg.ContainerEdits{
+			Env: []string{
+				fmt.Sprintf("NVIDIA_VISIBLE_DEVICES=%s", migGPUUUID),
+				fmt.Sprintf("CUDA_VISIBLE_DEVICES=%s", migGPUUUID),
+			},
+		},
+	}
 }

@@ -24,7 +24,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/google/uuid"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -93,17 +92,47 @@ func (a *PodAnnotator) Handle(ctx context.Context, req admission.Request) admiss
 		pod.Spec.SchedulingGates = append(pod.Spec.SchedulingGates, v1.PodSchedulingGate{Name: schedulingGateName})
 	}
 
-	// Generate an extended resource name based on the pod name
-	uuidStr := uuid.New().String()
+	// // Generate an extended resource name based on the pod name
+	// uuidStr := uuid.New().String()
 
-	// Add envFrom with a unique ConfigMap name derived from the pod name
-	configMapName := uuidStr
-	// Support for only one pod workloads
-	pod.Spec.Containers[0].EnvFrom = append(pod.Spec.Containers[0].EnvFrom, v1.EnvFromSource{
-		ConfigMapRef: &v1.ConfigMapEnvSource{
-			LocalObjectReference: v1.LocalObjectReference{Name: configMapName},
+	// // Add envFrom with a unique ConfigMap name derived from the pod name
+	// configMapName := uuidStr
+	// // Support for only one pod workloads
+	// pod.Spec.Containers[0].EnvFrom = append(pod.Spec.Containers[0].EnvFrom, v1.EnvFromSource{
+	// 	ConfigMapRef: &v1.ConfigMapEnvSource{
+	// 		LocalObjectReference: v1.LocalObjectReference{Name: configMapName},
+	// 	},
+	// })
+
+	// pod.Spec.Containers[0].Env = append(pod.Spec.Containers[0].Env, []v1.EnvVar{
+	// 	{
+	// 		Name: "CUDA_VISIBLE_DEVICES",
+	// 		ValueFrom: &v1.EnvVarSource{
+	// 			FieldRef: &v1.ObjectFieldSelector{
+	// 				APIVersion: "v1",
+	// 				FieldPath:  "metadata.annotations['instaslice.nvidia.device']",
+	// 			},
+	// 		},
+	// 	},
+	// 	{
+	// 		Name: "NVIDIA_VISIBLE_DEVICES",
+	// 		ValueFrom: &v1.EnvVarSource{
+	// 			FieldRef: &v1.ObjectFieldSelector{
+	// 				APIVersion: "v1",
+	// 				FieldPath:  "metadata.annotations['instaslice.nvidia.device']",
+	// 			},
+	// 		},
+	// 	},
+	// }...)
+
+	pod.Spec.Containers[0].Resources = v1.ResourceRequirements{
+		Limits: v1.ResourceList{
+			v1.ResourceName("instaslice.redhat.com/device"): resource.MustParse("1"),
 		},
-	})
+		Requests: v1.ResourceList{
+			v1.ResourceName("instaslice.redhat.com/device"): resource.MustParse("1"),
+		},
+	}
 
 	// Marshal the updated pod object back to JSON
 	marshaledPod, err := json.Marshal(pod)

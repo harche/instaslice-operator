@@ -13,7 +13,7 @@ spec:
     command:
       - sh
       - -c
-      -  "nvidia-smi -L; ./vectorAdd && sleep 180"
+      -  "nvidia-smi -L; ./vectorAdd && sleep inf"
       # requests:
       #   cpu: 1000m
       #   memory: 512Mi
