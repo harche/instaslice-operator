@@ -167,7 +167,7 @@ check-gpu-nodes:
 	fi
 
 .PHONY: test-e2e-ocp-emulated
-test-e2e-ocp-emulated: container-build-ocp docker-push bundle-ocp-emulated bundle-build-ocp bundle-push deploy-cert-manager-ocp deploy-instaslice-emulated-on-ocp 
+test-e2e-ocp-emulated: container-build-ocp docker-push bundle-ocp-emulated bundle-build-ocp bundle-push deploy-cert-manager-ocp deploy-instaslice-emulated-on-ocp
 	hack/label-node.sh
 	$(eval FOCUS_ARG := $(if $(FOCUS),--focus="$(FOCUS)"))
 	ginkgo -v --json-report=report.json --junit-report=report.xml --timeout 20m $(FOCUS_ARG) ./test/e2e
@@ -335,9 +335,9 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 .PHONY: ocp-deploy
 ocp-deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUBECTL) apply -f config/rbac/instaslice-operator-scc.yaml
-	$(KUBECTL) apply -f config/rbac/openshift_scc_cluster_role_binding.yaml
-	$(KUBECTL) apply -f config/rbac/openshift_cluster_role.yaml
+	$(KUBECTL) apply -f config/rbac-ocp/instaslice-operator-scc.yaml
+	$(KUBECTL) apply -f config/rbac-ocp/openshift_scc_cluster_role_binding.yaml
+	$(KUBECTL) apply -f config/rbac-ocp/openshift_cluster_role.yaml
 	$(KUSTOMIZE) build config/$(KUSTOMIZATION) | sed -e "s|<IMG_DMST>|$(IMG_DMST)|g" | $(KUBECTL) apply -f -
 
 .PHONY: deploy-emulated ## Deploy controller in emulator mode
@@ -360,9 +360,9 @@ undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/confi
 .PHONY: ocp-undeploy
 ocp-undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/$(KUSTOMIZATION) | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
-	$(KUBECTL) delete -f config/rbac/instaslice-operator-scc.yaml
-	$(KUBECTL) delete -f config/rbac/openshift_scc_cluster_role_binding.yaml
-	$(KUBECTL) apply -f config/rbac/openshift_cluster_role.yaml
+	$(KUBECTL) delete -f config/rbac-ocp/instaslice-operator-scc.yaml
+	$(KUBECTL) delete -f config/rbac-ocp/openshift_scc_cluster_role_binding.yaml
+	$(KUBECTL) apply -f config/rbac-ocp/openshift_cluster_role.yaml
 
 .PHONY: undeploy-emulated
 undeploy-emulated: KUSTOMIZATION=emulator ## Undeploy controller deployed in emulator mode
