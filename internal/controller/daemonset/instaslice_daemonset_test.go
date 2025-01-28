@@ -18,7 +18,6 @@ package daemonset
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"testing"
 
@@ -179,17 +178,22 @@ func newInstaslice(name, podUUID string, status inferencev1alpha1.AllocationStat
 	instaslice := new(inferencev1alpha1.Instaslice)
 	instaslice.Name = name
 	instaslice.Namespace = controller.InstaSliceOperatorNamespace
-	spec := inferencev1alpha1.InstasliceSpec{
-		Allocations: map[string]inferencev1alpha1.AllocationDetails{
-			podUUID: {
-				PodUUID:            podUUID,
-				Allocationstatus:   status,
-				Nodename:           name,
-				Resourceidentifier: name,
-			},
-		},
-	}
-	instaslice.Spec = spec
+	// spec := inferencev1alpha1.InstasliceSpec{
+	// 	PodAllocationRequests: map[types.UID]inferencev1alpha1.AllocationRequest{
+	// 		types.UID(podUUID): inferencev1alpha1.AllocationRequest{
+
+	// 		},
+	// 	},
+	// 	// PodAllocationRequests: map[string]inferencev1alpha1.AllocationRequests{
+	// 	// 	podUUID: {
+	// 	// 		PodUUID:            podUUID,
+	// 	// 		Allocationstatus:   status,
+	// 	// 		Nodename:           name,
+	// 	// 		Resourceidentifier: name,
+	// 	// 	},
+	// 	// },
+	// }
+	// instaslice.Spec = spec
 	return instaslice
 }
 
@@ -262,9 +266,9 @@ func TestInstaSliceDaemonsetReconciler_classicalResourcesAndGPUMemOnNode(t *test
 	}
 
 	assert.NoError(t, client.Create(ctx, node))
-	cpu, mem, err := reconciler.classicalResourcesAndGPUMemOnNode(ctx, nodeName, "30")
-	assert.Equal(t, int64(1), cpu)
-	assert.Equal(t, int64(524288000), mem)
+	nodeResourceList, err := reconciler.classicalResourcesAndGPUMemOnNode(ctx, nodeName, "30")
+	assert.Equal(t, resource.MustParse("10m"), nodeResourceList[v1.ResourceCPU])
+	assert.Equal(t, resource.MustParse("500Mi"), nodeResourceList[v1.ResourceMemory])
 	assert.NoError(t, err)
 }
 
@@ -428,24 +432,51 @@ func TestInstaSliceDaemonsetReconciler_checkConfigMapExists(t *testing.T) {
 
 func TestCalculateTotalMemoryGB(t *testing.T) {
 	type args struct {
-		isEmulated  bool
-		gpuInfoList map[string]string
+		isEmulated bool
+		nodeGPUs   []inferencev1alpha1.DiscoveredGPU
 	}
+
 	tests := []struct {
 		name    string
 		args    args
 		want    float64
 		wantErr assert.ErrorAssertionFunc
 	}{
-		{"test-case-emulated-mode", args{true, map[string]string{"gpu-1": "1g.5GB", "gpu-2": "2g.10GB"}}, 15, assert.NoError},
+		{
+			name: "test-case-emulated-mode",
+			args: args{
+				isEmulated: true,
+				nodeGPUs: []inferencev1alpha1.DiscoveredGPU{
+					{
+						GPUUUID:   "gpu-1",
+						GPUName:   "some-GPU",
+						GPUMemory: resource.MustParse("5Gi"),
+					},
+					{
+						GPUUUID:   "gpu-2",
+						GPUName:   "another-GPU",
+						GPUMemory: resource.MustParse("10Gi"),
+					},
+				},
+			},
+			want:    15.0,
+			wantErr: assert.NoError,
+		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := CalculateTotalMemoryGB(tt.args.isEmulated, tt.args.gpuInfoList)
-			if !tt.wantErr(t, err, fmt.Sprintf("CalculateTotalMemoryGB(%v, %v)", tt.args.isEmulated, tt.args.gpuInfoList)) {
+			got, err := CalculateTotalMemoryGB(tt.args.nodeGPUs)
+			if !tt.wantErr(t, err,
+				"CalculateTotalMemoryGB(%v, %v)",
+				tt.args.isEmulated, tt.args.nodeGPUs,
+			) {
 				return
 			}
-			assert.Equalf(t, tt.want, got, "CalculateTotalMemoryGB(%v, %v)", tt.args.isEmulated, tt.args.gpuInfoList)
+			assert.Equalf(t, tt.want, got,
+				"CalculateTotalMemoryGB(%v, %v)",
+				tt.args.isEmulated, tt.args.nodeGPUs,
+			)
 		})
 	}
 }

@@ -25,14 +25,16 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	inferencev1alpha1 "github.com/openshift/instaslice-operator/api/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const InstaSliceOperatorNamespace = "instaslice-system"
 
-func UpdateOrDeleteInstasliceAllocations(ctx context.Context, kubeClient client.Client, name string, allocation *inferencev1alpha1.AllocationDetails) error {
+func UpdateOrDeleteInstasliceAllocations(ctx context.Context, kubeClient client.Client, name string, allocResult *inferencev1alpha1.AllocationResult, allocRequest *inferencev1alpha1.AllocationRequest) error {
 	var newInstaslice inferencev1alpha1.Instaslice
 	typeNamespacedName := types.NamespacedName{
 		Name:      name,
@@ -43,26 +45,51 @@ func UpdateOrDeleteInstasliceAllocations(ctx context.Context, kubeClient client.
 		return fmt.Errorf("error fetching the instaslice object: %s", name)
 	}
 
-	original := newInstaslice.DeepCopy()
+	originalInstaSliceObj := newInstaslice.DeepCopy()
 
-	if newInstaslice.Spec.Allocations == nil {
-		newInstaslice.Spec.Allocations = make(map[string]inferencev1alpha1.AllocationDetails)
+	if newInstaslice.Spec.PodAllocationRequests == nil {
+		newInstaslice.Spec.PodAllocationRequests = make(map[types.UID]*inferencev1alpha1.AllocationRequest)
 	}
-
-	var keysToDelete []string
-	for uuid, alloc := range newInstaslice.Spec.Allocations {
-		if alloc.Allocationstatus == inferencev1alpha1.AllocationStatusDeleted {
+	var keysToDelete []types.UID
+	for uuid, alloc := range newInstaslice.Status.PodAllocationResults {
+		if alloc.AllocationStatus == inferencev1alpha1.AllocationStatusDeleted {
 			keysToDelete = append(keysToDelete, uuid)
 		}
 	}
 
 	for _, uuid := range keysToDelete {
-		delete(newInstaslice.Spec.Allocations, uuid)
+		delete(newInstaslice.Spec.PodAllocationRequests, uuid)
 	}
-	if allocation != nil {
-		newInstaslice.Spec.Allocations[allocation.PodUUID] = *allocation
+	if allocRequest != nil {
+		newInstaslice.Spec.PodAllocationRequests[allocRequest.PodRef.UID] = allocRequest
 	}
-	err = kubeClient.Patch(ctx, &newInstaslice, client.MergeFrom(original))
+	err = kubeClient.Patch(ctx, &newInstaslice, client.MergeFrom(originalInstaSliceObj))
+	if err != nil {
+		return fmt.Errorf("error updating the instaslie object, %s, err: %v", name, err)
+	}
+	if newInstaslice.Status.PodAllocationResults == nil {
+		newInstaslice.Status.PodAllocationResults = make(map[types.UID]*inferencev1alpha1.AllocationResult)
+	}
+	if allocRequest != nil {
+		conditionType := string(allocResult.AllocationStatus)
+		if !conditionExists(allocResult.Conditions, conditionType) {
+			newAlloc := allocResult
+			newCondition := metav1.Condition{
+				Type:               string(allocResult.AllocationStatus),
+				Status:             metav1.ConditionTrue,
+				Reason:             "AllocationStatusUpdate",
+				Message:            "Allocation status updated successfully",
+				LastTransitionTime: metav1.Now(),
+			}
+			newAlloc.Conditions = append(newAlloc.Conditions, newCondition)
+			log.FromContext(ctx).Info("adding", "cond", conditionType)
+			newInstaslice.Status.PodAllocationResults[allocRequest.PodRef.UID] = newAlloc
+		}
+	}
+	for _, uuid := range keysToDelete {
+		delete(newInstaslice.Status.PodAllocationResults, uuid)
+	}
+	err = kubeClient.Status().Patch(ctx, &newInstaslice, client.MergeFrom(originalInstaSliceObj))
 	if err != nil {
 		return fmt.Errorf("error updating the instaslie object, %s, err: %v", name, err)
 	}
@@ -86,4 +113,13 @@ func isGvkPresent(ctx context.Context, cl client.Client, gvk schema.GroupVersion
 		return false
 	}
 	return true
+}
+
+func conditionExists(conditions []metav1.Condition, conditionType string) bool {
+	for _, cond := range conditions {
+		if cond.Type == conditionType {
+			return true
+		}
+	}
+	return false
 }
