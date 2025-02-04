@@ -88,7 +88,10 @@ func (r *InstasliceReconciler) findNodeAndDeviceForASlice(ctx context.Context, i
 				pod.Name,      // TODO - replace this with podRef
 				gpuuuid,
 				resourceIdentifier,
-				availableResources,
+				v1.ResourceList{
+					v1.ResourceCPU:    cpuRequest,
+					v1.ResourceMemory: memoryRequest,
+				},
 			)
 			return allocRequest, allocResult, nil
 		}
