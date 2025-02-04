@@ -270,7 +270,7 @@ var _ = Describe("controller", Ordered, func() {
 
 				for _, instaslice := range instasliceObjs.Items {
 					podAllocationResult := instaslice.Status.PodAllocationResults[pod.UID]
-					if podAllocationResult.GPUUUID != "" {
+					if podAllocationResult != nil && podAllocationResult.GPUUUID != "" {
 						return nil
 					}
 				}
@@ -297,7 +297,7 @@ var _ = Describe("controller", Ordered, func() {
 				}
 				for _, instaslice := range instasliceObjs.Items {
 					podAllocationResult := instaslice.Status.PodAllocationResults[pod.UID]
-					if podAllocationResult.GPUUUID != "" {
+					if podAllocationResult != nil && podAllocationResult.GPUUUID != "" {
 						return nil
 					}
 				}
@@ -323,7 +323,7 @@ var _ = Describe("controller", Ordered, func() {
 
 				for _, instaslice := range instasliceObjs.Items {
 					podAllocationResult := instaslice.Status.PodAllocationResults[pod.UID]
-					if podAllocationResult.GPUUUID != "" {
+					if podAllocationResult != nil && podAllocationResult.GPUUUID != "" {
 						return fmt.Errorf("GPU allocation found for the pod %+v", pod)
 					}
 				}
@@ -351,7 +351,7 @@ var _ = Describe("controller", Ordered, func() {
 
 				for _, instaslice := range instasliceObjs.Items {
 					podAllocationResult := instaslice.Status.PodAllocationResults[pod.UID]
-					if podAllocationResult.GPUUUID != "" {
+					if podAllocationResult != nil && podAllocationResult.GPUUUID != "" {
 						return fmt.Errorf("GPU allocation found for the pod %+v", pod)
 					}
 				}
@@ -391,7 +391,7 @@ var _ = Describe("controller", Ordered, func() {
 
 				for _, instaslice := range instasliceObjs.Items {
 					podAllocationResult := instaslice.Status.PodAllocationResults[pod.UID]
-					if podAllocationResult.GPUUUID != "" {
+					if podAllocationResult != nil && podAllocationResult.GPUUUID != "" {
 						return nil
 					}
 				}
@@ -432,7 +432,7 @@ var _ = Describe("controller", Ordered, func() {
 
 				for _, instaslice := range instasliceObjs.Items {
 					podAllocationResult := instaslice.Status.PodAllocationResults[pod.UID]
-					if podAllocationResult.GPUUUID != "" {
+					if podAllocationResult != nil && podAllocationResult.GPUUUID != "" {
 						return nil
 					}
 				}
@@ -475,7 +475,7 @@ var _ = Describe("controller", Ordered, func() {
 
 				for _, instaslice := range instasliceObjs.Items {
 					podAllocationResult := instaslice.Status.PodAllocationResults[pod.UID]
-					if podAllocationResult.GPUUUID != "" {
+					if podAllocationResult != nil && podAllocationResult.GPUUUID != "" {
 						return nil
 					}
 				}
@@ -550,9 +550,9 @@ var _ = Describe("controller", Ordered, func() {
 
 						// Since we are requesting 7 slices of type mig-1g.5gb, all 7 pods must be
 						// assigned to the same GPU
-						if assignedGPUUUID == "" {
+						if allocation != nil && assignedGPUUUID == "" {
 							assignedGPUUUID = allocation.GPUUUID
-						} else if allocation.GPUUUID != assignedGPUUUID {
+						} else if allocation != nil && allocation.GPUUUID != assignedGPUUUID {
 							allAssignedToOneGPU = false
 							break
 						}
