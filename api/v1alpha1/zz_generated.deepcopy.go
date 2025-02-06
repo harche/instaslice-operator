@@ -183,18 +183,9 @@ func (in *InstasliceSpec) DeepCopyInto(out *InstasliceSpec) {
 	*out = *in
 	if in.PodAllocationRequests != nil {
 		in, out := &in.PodAllocationRequests, &out.PodAllocationRequests
-		*out = make(map[types.UID]*AllocationRequest, len(*in))
+		*out = make(map[types.UID]AllocationRequest, len(*in))
 		for key, val := range *in {
-			var outVal *AllocationRequest
-			if val == nil {
-				(*out)[key] = nil
-			} else {
-				inVal := (*in)[key]
-				in, out := &inVal, &outVal
-				*out = new(AllocationRequest)
-				(*in).DeepCopyInto(*out)
-			}
-			(*out)[key] = outVal
+			(*out)[key] = *val.DeepCopy()
 		}
 	}
 }
@@ -214,18 +205,9 @@ func (in *InstasliceStatus) DeepCopyInto(out *InstasliceStatus) {
 	*out = *in
 	if in.PodAllocationResults != nil {
 		in, out := &in.PodAllocationResults, &out.PodAllocationResults
-		*out = make(map[types.UID]*AllocationResult, len(*in))
+		*out = make(map[types.UID]AllocationResult, len(*in))
 		for key, val := range *in {
-			var outVal *AllocationResult
-			if val == nil {
-				(*out)[key] = nil
-			} else {
-				inVal := (*in)[key]
-				in, out := &inVal, &outVal
-				*out = new(AllocationResult)
-				(*in).DeepCopyInto(*out)
-			}
-			(*out)[key] = outVal
+			(*out)[key] = *val.DeepCopy()
 		}
 	}
 	in.NodeResources.DeepCopyInto(&out.NodeResources)

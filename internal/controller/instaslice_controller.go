@@ -194,7 +194,7 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					}
 					if allocation.AllocationStatus == inferencev1alpha1.AllocationStatusCreated || allocation.AllocationStatus == inferencev1alpha1.AllocationStatusUngated {
 						allocRequest := instaslice.Spec.PodAllocationRequests[uuid]
-						resultDeleting, err := r.setInstasliceAllocationToDeleting(ctx, instaslice.Name, string(pod.UID), allocation, allocRequest)
+						resultDeleting, err := r.setInstasliceAllocationToDeleting(ctx, instaslice.Name, string(pod.UID), &allocation, &allocRequest)
 						if err != nil {
 							return resultDeleting, nil
 						}
@@ -203,7 +203,7 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 						return ctrl.Result{}, nil
 					}
 					if allocation.AllocationStatus == inferencev1alpha1.AllocationStatusDeleted {
-						err := r.removeInstasliceAllocation(ctx, instaslice.Name, allocation)
+						err := r.removeInstasliceAllocation(ctx, instaslice.Name, &allocation)
 						if err != nil {
 							return ctrl.Result{}, err
 						}
@@ -234,7 +234,7 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					if allocation.AllocationStatus != inferencev1alpha1.AllocationStatusDeleted {
 						allocRequest := instaslice.Spec.PodAllocationRequests[uuid]
 						log.Info("setting status to deleting", "pod", pod.Name)
-						result, err := r.setInstasliceAllocationToDeleting(ctx, instaslice.Name, string(pod.UID), allocation, allocRequest)
+						result, err := r.setInstasliceAllocationToDeleting(ctx, instaslice.Name, string(pod.UID), &allocation, &allocRequest)
 						if err != nil {
 							return result, err
 						}
@@ -244,7 +244,7 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					}
 
 					if allocation.AllocationStatus == inferencev1alpha1.AllocationStatusDeleted {
-						err := r.removeInstasliceAllocation(ctx, instaslice.Name, allocation)
+						err := r.removeInstasliceAllocation(ctx, instaslice.Name, &allocation)
 						if err != nil {
 							return ctrl.Result{}, err
 						}
@@ -276,14 +276,14 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				if podUuid == pod.UID && (allocation.AllocationStatus == inferencev1alpha1.AllocationStatusCreated) {
 					allocation.AllocationStatus = inferencev1alpha1.AllocationStatusDeleting
 					allocRequest := instaslice.Spec.PodAllocationRequests[podUuid]
-					if err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, instaslice.Name, allocation, allocRequest); err != nil {
+					if err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, instaslice.Name, &allocation, &allocRequest); err != nil {
 						log.Info("unable to set instaslice to state deleted for ungated", "pod", pod.Name)
 						return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 					}
 					return ctrl.Result{}, nil
 				}
 				if podUuid == pod.UID && allocation.AllocationStatus == inferencev1alpha1.AllocationStatusDeleted {
-					err := r.removeInstasliceAllocation(ctx, instaslice.Name, allocation)
+					err := r.removeInstasliceAllocation(ctx, instaslice.Name, &allocation)
 					if err != nil {
 						return ctrl.Result{}, err
 					}
@@ -310,7 +310,7 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					if podUuid == pod.UID {
 						if allocation.AllocationStatus == inferencev1alpha1.AllocationStatusDeleted {
 							allocRequest := instaslice.Spec.PodAllocationRequests[podUuid]
-							err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, instaslice.Name, allocation, allocRequest)
+							err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, instaslice.Name, &allocation, &allocRequest)
 							if err != nil {
 								return ctrl.Result{}, err
 							}
@@ -323,7 +323,7 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 						if elapsed > 30*time.Second {
 							allocation.AllocationStatus = inferencev1alpha1.AllocationStatusDeleting
 							allocRequest := instaslice.Spec.PodAllocationRequests[podUuid]
-							if err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, instaslice.Name, allocation, allocRequest); err != nil {
+							if err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, instaslice.Name, &allocation, &allocRequest); err != nil {
 								log.Info("unable to set instaslice to state deleted for ", "pod", pod.Name)
 								return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 							}
@@ -371,10 +371,10 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				if allocations.AllocationStatus == inferencev1alpha1.AllocationStatusCreated && uuid == pod.UID {
 					allocations.AllocationStatus = inferencev1alpha1.AllocationStatusUngated
 					allocRequest := instaslice.Spec.PodAllocationRequests[uuid]
-					if err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, instaslice.Name, allocations, allocRequest); err != nil {
-						return ctrl.Result{Requeue: true}, nil
+					if err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, instaslice.Name, &allocations, &allocRequest); err != nil {
+						return ctrl.Result{Requeue: true}, err
 					}
-					result, err := r.addNodeSelectorAndUngatePod(ctx, pod, allocations)
+					result, err := r.addNodeSelectorAndUngatePod(ctx, pod, &allocations)
 					if err != nil {
 						return result, err
 					}
@@ -383,7 +383,7 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				// InstaSlice object got updated with ungated status but the controller failed
 				// ungating the pod.
 				if allocations.AllocationStatus == inferencev1alpha1.AllocationStatusUngated && uuid == pod.UID {
-					result, err := r.addNodeSelectorAndUngatePod(ctx, pod, allocations)
+					result, err := r.addNodeSelectorAndUngatePod(ctx, pod, &allocations)
 					if err != nil {
 						return result, err
 					}

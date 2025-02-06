@@ -92,7 +92,7 @@ func TestChangesAllocationDeletionAndFinalizer(t *testing.T) {
 					Namespace: InstaSliceOperatorNamespace,
 				},
 				Spec: inferencev1alpha1.InstasliceSpec{
-					PodAllocationRequests: map[types.UID]*inferencev1alpha1.AllocationRequest{
+					PodAllocationRequests: map[types.UID]inferencev1alpha1.AllocationRequest{
 						types.UID(podUUID): {
 							Profile: "test-profile",
 							PodRef: v1.ObjectReference{
@@ -105,7 +105,7 @@ func TestChangesAllocationDeletionAndFinalizer(t *testing.T) {
 					},
 				},
 				Status: inferencev1alpha1.InstasliceStatus{
-					PodAllocationResults: map[types.UID]*inferencev1alpha1.AllocationResult{
+					PodAllocationResults: map[types.UID]inferencev1alpha1.AllocationResult{
 						types.UID(podUUID): {
 							AllocationStatus:            inferencev1alpha1.AllocationStatusCreating,
 							GPUUUID:                     "GPU-12345",
@@ -127,14 +127,16 @@ func TestChangesAllocationDeletionAndFinalizer(t *testing.T) {
 		})
 
 		It("should remove pod allocation from PodAllocationResults when allocation status is Deleted", func() {
-			instaslice.Status.PodAllocationResults[pod.GetUID()] = &inferencev1alpha1.AllocationResult{
+			instaslice.Status.PodAllocationResults[pod.GetUID()] = inferencev1alpha1.AllocationResult{
 				AllocationStatus: inferencev1alpha1.AllocationStatusDeleted,
 				GPUUUID:          "fake-gpu-uuid",
 				Nodename:         "fake-node",
 			}
 			Expect(fakeClient.Status().Update(ctx, instaslice)).To(Succeed())
 
-			err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, instaslice.Name, instaslice.Status.PodAllocationResults[pod.GetUID()], instaslice.Spec.PodAllocationRequests[pod.GetUID()])
+			allocationResult := instaslice.Status.PodAllocationResults[pod.GetUID()]
+			allocationRequest := instaslice.Spec.PodAllocationRequests[pod.GetUID()]
+			err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, instaslice.Name, &allocationResult, &allocationRequest)
 			Expect(err).NotTo(HaveOccurred())
 
 			updatedInstaSlice := &inferencev1alpha1.Instaslice{}
@@ -152,7 +154,7 @@ func TestChangesAllocationDeletionAndFinalizer(t *testing.T) {
 		})
 
 		It("should remove finalizer after allocation is deleted", func() {
-			instaslice.Status.PodAllocationResults[types.UID(podUUID)] = &inferencev1alpha1.AllocationResult{
+			instaslice.Status.PodAllocationResults[types.UID(podUUID)] = inferencev1alpha1.AllocationResult{
 				AllocationStatus: inferencev1alpha1.AllocationStatusDeleted,
 				GPUUUID:          "fake-gpu-uuid",
 				Nodename:         "fake-node",
@@ -170,7 +172,9 @@ func TestChangesAllocationDeletionAndFinalizer(t *testing.T) {
 		})
 
 		It("should set allocation status to Deleting if status is not Deleted", func() {
-			result, err := r.setInstasliceAllocationToDeleting(ctx, instaslice.Name, podUUID, instaslice.Status.PodAllocationResults[pod.GetUID()], instaslice.Spec.PodAllocationRequests[pod.GetUID()])
+			allocationResult := instaslice.Status.PodAllocationResults[pod.GetUID()]
+			allocationRequest := instaslice.Spec.PodAllocationRequests[pod.GetUID()]
+			result, err := r.setInstasliceAllocationToDeleting(ctx, instaslice.Name, podUUID, &allocationResult, &allocationRequest)
 
 			Expect(err).NotTo(HaveOccurred())
 
@@ -184,8 +188,9 @@ func TestChangesAllocationDeletionAndFinalizer(t *testing.T) {
 
 		It("should requeue if there is an error updating the instaslice", func() {
 			r.Client = fake.NewClientBuilder().WithScheme(runtime.NewScheme()).Build()
-
-			result, err := r.setInstasliceAllocationToDeleting(ctx, instaslice.Name, podUUID, instaslice.Status.PodAllocationResults[pod.GetUID()], instaslice.Spec.PodAllocationRequests[pod.GetUID()])
+			allocationResult := instaslice.Status.PodAllocationResults[pod.GetUID()]
+			allocationRequest := instaslice.Spec.PodAllocationRequests[pod.GetUID()]
+			result, err := r.setInstasliceAllocationToDeleting(ctx, instaslice.Name, podUUID, &allocationResult, &allocationRequest)
 
 			Expect(err).To(HaveOccurred())
 			Expect(result.Requeue).To(BeTrue())
@@ -387,7 +392,7 @@ func TestInstasliceReconciler_Reconcile(t *testing.T) {
 					Namespace: InstaSliceOperatorNamespace,
 				},
 				Spec: inferencev1alpha1.InstasliceSpec{
-					PodAllocationRequests: map[types.UID]*inferencev1alpha1.AllocationRequest{
+					PodAllocationRequests: map[types.UID]inferencev1alpha1.AllocationRequest{
 						types.UID(podUUID): {
 							Profile: "test-profile",
 							PodRef: v1.ObjectReference{
@@ -400,7 +405,7 @@ func TestInstasliceReconciler_Reconcile(t *testing.T) {
 					},
 				},
 				Status: inferencev1alpha1.InstasliceStatus{
-					PodAllocationResults: map[types.UID]*inferencev1alpha1.AllocationResult{
+					PodAllocationResults: map[types.UID]inferencev1alpha1.AllocationResult{
 						types.UID(podUUID): {
 							AllocationStatus:            inferencev1alpha1.AllocationStatusCreating,
 							GPUUUID:                     "GPU-12345",
@@ -722,7 +727,7 @@ func TestInstasliceReconciler_Reconcile(t *testing.T) {
 				Namespace: InstaSliceOperatorNamespace,
 			}, currentSlice)).To(Succeed())
 
-			currentSlice.Spec.PodAllocationRequests[types.UID(podUUID)] = &inferencev1alpha1.AllocationRequest{
+			currentSlice.Spec.PodAllocationRequests[types.UID(podUUID)] = inferencev1alpha1.AllocationRequest{
 				Profile: "test-profile",
 				PodRef: v1.ObjectReference{
 					Name:      pod.Name,
@@ -731,7 +736,7 @@ func TestInstasliceReconciler_Reconcile(t *testing.T) {
 				},
 			}
 
-			currentSlice.Status.PodAllocationResults[types.UID(podUUID)] = &inferencev1alpha1.AllocationResult{
+			currentSlice.Status.PodAllocationResults[types.UID(podUUID)] = inferencev1alpha1.AllocationResult{
 				AllocationStatus:            inferencev1alpha1.AllocationStatusCreated,
 				GPUUUID:                     "fake-gpu-uuid",
 				Nodename:                    "fake-node",
@@ -796,7 +801,7 @@ func TestInstasliceReconciler_Reconcile(t *testing.T) {
 			}, currentSlice)).To(Succeed())
 
 			currentSlice.Spec.PodAllocationRequests[types.UID(podUUID)], currentSlice.Status.PodAllocationResults[types.UID(podUUID)] =
-				&inferencev1alpha1.AllocationRequest{
+				inferencev1alpha1.AllocationRequest{
 					Profile: "test-profile",
 					PodRef: v1.ObjectReference{
 						Name:      pod.Name,
@@ -805,7 +810,7 @@ func TestInstasliceReconciler_Reconcile(t *testing.T) {
 					},
 					Resources: v1.ResourceRequirements{},
 				},
-				&inferencev1alpha1.AllocationResult{
+				inferencev1alpha1.AllocationResult{
 					AllocationStatus:            inferencev1alpha1.AllocationStatusCreated,
 					GPUUUID:                     "fake-gpu-uuid",
 					Nodename:                    "fake-node",
@@ -902,7 +907,7 @@ func TestInstasliceReconciler_podMapFunc(t *testing.T) {
 	instaslice := new(inferencev1alpha1.Instaslice)
 	podUID := types.UID("pod-uuid")
 
-	instaslice.Spec.PodAllocationRequests = map[types.UID]*inferencev1alpha1.AllocationRequest{
+	instaslice.Spec.PodAllocationRequests = map[types.UID]inferencev1alpha1.AllocationRequest{
 		podUID: {
 			Profile: "1g.5gb",
 			PodRef: v1.ObjectReference{
@@ -912,7 +917,7 @@ func TestInstasliceReconciler_podMapFunc(t *testing.T) {
 			},
 		},
 	}
-	instaslice.Status.PodAllocationResults = map[types.UID]*inferencev1alpha1.AllocationResult{
+	instaslice.Status.PodAllocationResults = map[types.UID]inferencev1alpha1.AllocationResult{
 		podUID: {
 			AllocationStatus: inferencev1alpha1.AllocationStatusDeleted,
 			Nodename:         "my-node",

@@ -134,7 +134,7 @@ type InstasliceSpec struct {
 	// podAllocationRequests specifies the allocation requests per pod
 	// +kubebuilder:validation:optional
 	// +optional
-	PodAllocationRequests map[types.UID]*AllocationRequest `json:"podAllocationRequests"`
+	PodAllocationRequests map[types.UID]AllocationRequest `json:"podAllocationRequests"`
 
 	// emulatorMode specifies whether the Instaslice is running in emulator mode
 	// +kubebuilder:validation:Optional
@@ -145,7 +145,7 @@ type InstasliceStatus struct {
 	// podAllocationResults specify the allocation results per pod
 	// +kubebuilder:validation:optional
 	// +optional
-	PodAllocationResults map[types.UID]*AllocationResult `json:"podAllocationResults"`
+	PodAllocationResults map[types.UID]AllocationResult `json:"podAllocationResults"`
 
 	// nodeResources specifies the discovered resources of the node
 	// +kubebuilder:validation:optional

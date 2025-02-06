@@ -150,7 +150,7 @@ func (r *InstaSliceDaemonsetReconciler) Reconcile(ctx context.Context, req ctrl.
 			log.Info("Performing cleanup for pod", "podRef", podRef)
 			if !r.Config.EmulatorModeEnable {
 
-				err := r.cleanUpCiAndGi(ctx, allocResult)
+				err := r.cleanUpCiAndGi(ctx, &allocResult)
 				if err != nil {
 					// NVML shutdowm took time or NVML init may have failed.
 					log.Error(err, "error cleaning up ci and gi retrying")
@@ -236,7 +236,7 @@ func (r *InstaSliceDaemonsetReconciler) Reconcile(ctx context.Context, req ctrl.
 				ciProfileID := selectedMig.CIProfileID
 
 				createdMigInfos, err := r.createSliceAndPopulateMigInfos(
-					ctx, device, allocResult, giProfileInfo, placement, ciProfileID, podRef.Name)
+					ctx, device, &allocResult, giProfileInfo, placement, ciProfileID, podRef.Name)
 				if err != nil {
 					log.Error(err, "MIG creation not successful")
 					return ctrl.Result{RequeueAfter: controller.Requeue2sDelay}, nil

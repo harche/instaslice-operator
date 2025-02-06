@@ -60,7 +60,7 @@ func (r *InstasliceReconciler) findNodeAndDeviceForASlice(ctx context.Context, i
 		gpuUUIDs := sortGPUs(updatedInstaSliceObject)
 		for _, gpuuuid := range gpuUUIDs {
 			if updatedInstaSliceObject.Spec.PodAllocationRequests == nil {
-				updatedInstaSliceObject.Spec.PodAllocationRequests = make(map[types.UID]*inferencev1alpha1.AllocationRequest)
+				updatedInstaSliceObject.Spec.PodAllocationRequests = make(map[types.UID]inferencev1alpha1.AllocationRequest)
 			}
 
 			newStart := r.getStartIndexFromPreparedState(updatedInstaSliceObject, gpuuuid, profileName)
