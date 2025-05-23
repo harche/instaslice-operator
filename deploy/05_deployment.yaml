@@ -33,7 +33,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ "ALL" ]
-          image: quay.io/ryan.phillips/instaslice-operator
+          image: quay.io/harpatil/instaslice-operator:testtag
           volumeMounts:
             - name: tmp
               mountPath: "/tmp"
@@ -49,9 +49,9 @@ spec:
             - name: OPERATOR_NAME
               value: "instaslice-operator"
             - name: RELATED_IMAGE_DAEMONSET_IMAGE
-              value: quay.io/ryan.phillips/instaslice-daemonset
+              value: quay.io/harpatil/instaslice-daemonset:testtag
             - name: RELATED_IMAGE_WEBHOOK_IMAGE
-              value: quay.io/ryan.phillips/instaslice-webhook
+              value: quay.io/harpatil/instaslice-webhook:testtag
       serviceAccountName: instaslice-operator
       volumes:
         - name: tmp
