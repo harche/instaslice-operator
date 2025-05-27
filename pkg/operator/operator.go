@@ -22,6 +22,7 @@ import (
 	operatorclientinformers "github.com/openshift/instaslice-operator/pkg/generated/informers/externalversions"
 	instaslicecontroller "github.com/openshift/instaslice-operator/pkg/operator/controllers/instaslice"
 	instaslicecontrollerns "github.com/openshift/instaslice-operator/pkg/operator/controllers/instaslice-ns"
+	podscontroller "github.com/openshift/instaslice-operator/pkg/operator/controllers/pods"
 	"github.com/openshift/instaslice-operator/pkg/operator/operatorclient"
 )
 
@@ -115,6 +116,15 @@ func RunOperator(ctx context.Context, cc *controllercmd.ControllerContext) error
 	// Create the InstasliceNS Controller
 	instasliceControllerNS := instaslicecontrollerns.NewInstasliceController(namespaceFilterInformer, cc.EventRecorder)
 
+	// Create the Pod Controller
+	podControllerConfig := podscontroller.PodControllerConfig{
+		Namespace:     namespace,
+		KubeClient:    kubeClient,
+		PodInformer:   kubeInformersForNamespaces.Core().V1().Pods().Informer(),
+		EventRecorder: cc.EventRecorder,
+	}
+	podController := podscontroller.NewPodController(&podControllerConfig)
+
 	// Create webhook server
 	// _, err = webhookserver.NewServer(cc.ProtoKubeConfig, "", "", "")
 	// if err != nil {
@@ -134,6 +144,8 @@ func RunOperator(ctx context.Context, cc *controllercmd.ControllerContext) error
 	go instasliceController.Run(ctx, 1)
 	klog.Infof("Starting Instaslice Namespace Controller")
 	go instasliceControllerNS.Run(ctx, 1)
+	klog.Infof("Starting Pod Controller")
+	go podController.Run(ctx, 1)
 	klog.Infof("Starting Webhook Server")
 	// go mutatingWebhookServer.Run(ctx)
 
