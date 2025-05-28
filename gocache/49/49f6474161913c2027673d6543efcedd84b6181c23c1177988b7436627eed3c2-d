@@ -1,0 +1,7 @@
+./doc.go
+./instaslice.go
+./instaslice_types.go
+./register.go
+./types.go
+./zz_generated.deepcopy.go
+./zz_generated.defaults.go

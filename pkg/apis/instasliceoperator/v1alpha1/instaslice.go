@@ -27,10 +27,12 @@ type AllocationRequest struct {
 
 	// resources specifies resource requirements for the allocation
 	// +optional
+	// +kubebuilder:pruning:PreserveUnknownFields
 	Resources corev1.ResourceRequirements `json:"resources"`
 
 	// podRef is a reference to the gated Pod requesting the allocation
 	// +optional
+	// +kubebuilder:pruning:PreserveUnknownFields
 	PodRef corev1.ObjectReference `json:"podRef"`
 }
 
@@ -99,7 +101,12 @@ type DiscoveredNodeResources struct {
 
 	// nodeResources represents the resource list of the node at boot time
 	// +required
+	// +kubebuilder:pruning:PreserveUnknownFields
 	NodeResources corev1.ResourceList `json:"nodeResources"`
+
+	// bootID represents the node's boot ID for detecting node restarts
+	// +optional
+	BootID string `json:"bootId,omitempty"`
 }
 
 type Mig struct {

@@ -1,33 +1,32 @@
 package operator
 
 import (
-	"context"
-	"os"
-	"time"
+   "context"
+   "os"
+   "time"
 
-	"github.com/openshift/library-go/pkg/controller/controllercmd"
-	"github.com/openshift/library-go/pkg/operator/loglevel"
-	"github.com/openshift/library-go/pkg/operator/v1helpers"
+   "github.com/openshift/library-go/pkg/controller/controllercmd"
+   "github.com/openshift/library-go/pkg/operator/loglevel"
+   "github.com/openshift/library-go/pkg/operator/v1helpers"
 
-	apiextclientv1 "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
-	appsv1client "k8s.io/client-go/kubernetes/typed/apps/v1"
-	"k8s.io/klog/v2"
+   apiextclientv1 "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+   "k8s.io/client-go/discovery"
+   "k8s.io/client-go/dynamic"
+   "k8s.io/client-go/informers"
+   "k8s.io/client-go/kubernetes"
+   appsv1client "k8s.io/client-go/kubernetes/typed/apps/v1"
+   metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+   "k8s.io/klog/v2"
 
+	resourcecache "github.com/openshift/instaslice-operator/pkg/operator/cache"
 	operatorconfigclient "github.com/openshift/instaslice-operator/pkg/generated/clientset/versioned"
 	operatorclientinformers "github.com/openshift/instaslice-operator/pkg/generated/informers/externalversions"
 	instaslicecontroller "github.com/openshift/instaslice-operator/pkg/operator/controllers/instaslice"
-	instaslicecontrollerns "github.com/openshift/instaslice-operator/pkg/operator/controllers/instaslice-ns"
+	podcontroller "github.com/openshift/instaslice-operator/pkg/operator/controllers/pod"
 	"github.com/openshift/instaslice-operator/pkg/operator/operatorclient"
 )
 
 var operatorNamespace = "instaslice-system"
-
-const namespaceLabel = "inference.redhat.com/enabled=true"
 
 func RunOperator(ctx context.Context, cc *controllercmd.ControllerContext) error {
 	kubeClient, err := kubernetes.NewForConfig(cc.ProtoKubeConfig)
@@ -67,12 +66,6 @@ func RunOperator(ctx context.Context, cc *controllercmd.ControllerContext) error
 		namespace = operatorNamespace
 	}
 
-	// Create a filtered namespace lister
-	twOptions := informers.WithTweakListOptions(func(listOptions *metav1.ListOptions) {
-		listOptions.LabelSelector = namespaceLabel
-	})
-	namespaceFilterInformer := informers.NewSharedInformerFactoryWithOptions(kubeClient, 10*time.Minute, twOptions)
-
 	// KubeInformer for Instaslice namespace
 	kubeInformersForNamespaces := v1helpers.NewKubeInformersForNamespaces(kubeClient, "", namespace)
 
@@ -107,13 +100,44 @@ func RunOperator(ctx context.Context, cc *controllercmd.ControllerContext) error
 	sliceControllerConfig := instaslicecontroller.InstasliceControllerConfig{
 		Namespace:          namespace,
 		OperatorClient:     operatorConfigClient,
+		KubeClient:         kubeClient,
 		InstasliceInformer: operatorConfigInformers.OpenShiftOperator().V1alpha1().Instaslices().Informer(),
 		EventRecorder:      cc.EventRecorder,
 	}
 	instasliceController := instaslicecontroller.NewInstasliceController(&sliceControllerConfig)
+	// Start resource tracker for node resources
+	klog.InfoS("Starting ResourceTracker")
+	resourceTracker, err := resourcecache.NewResourceTracker(cc.KubeConfig)
+	if err != nil {
+		return err
+	}
+	go func() {
+		if err := resourceTracker.Start(ctx); err != nil {
+			klog.ErrorS(err, "ResourceTracker exited")
+		}
+	}()
 
-	// Create the InstasliceNS Controller
-	instasliceControllerNS := instaslicecontrollerns.NewInstasliceController(namespaceFilterInformer, cc.EventRecorder)
+	// Create and start Pod Controller
+	klog.InfoS("Starting Pod Controller")
+	// Create a filtered Pod informer to only watch pods labeled by instaslice webhook
+	filteredPodInformerFactory := informers.NewSharedInformerFactoryWithOptions(
+		kubeClient,
+		10*time.Minute,
+		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+			options.LabelSelector = "instaslice.com/pod=true"
+		}),
+	)
+	podInformer := filteredPodInformerFactory.Core().V1().Pods().Informer()
+	instasliceInformer := operatorConfigInformers.OpenShiftOperator().V1alpha1().Instaslices().Informer()
+	podController := podcontroller.NewPodController(&podcontroller.PodControllerConfig{
+		KubeClient:         kubeClient,
+		InstasliceClient:   operatorConfigClient,
+		PodInformer:        podInformer,
+		InstasliceInformer: instasliceInformer,
+		ResourceCache:      resourceTracker.Cache(),
+		EventRecorder:      cc.EventRecorder,
+	})
+	go podController.Run(ctx, 1)
 
 	// Create webhook server
 	// _, err = webhookserver.NewServer(cc.ProtoKubeConfig, "", "", "")
@@ -123,8 +147,10 @@ func RunOperator(ctx context.Context, cc *controllercmd.ControllerContext) error
 
 	klog.Infof("Starting informers")
 	operatorConfigInformers.Start(ctx.Done())
+	// Start namespace informers
 	kubeInformersForNamespaces.Start(ctx.Done())
-	namespaceFilterInformer.Start(ctx.Done())
+	// Start filtered Pod informer
+	filteredPodInformerFactory.Start(ctx.Done())
 
 	klog.Infof("Starting log level controller")
 	go logLevelController.Run(ctx, 1)
@@ -132,8 +158,6 @@ func RunOperator(ctx context.Context, cc *controllercmd.ControllerContext) error
 	go targetConfigReconciler.Run(ctx, 1)
 	klog.Infof("Starting Instaslice Controller")
 	go instasliceController.Run(ctx, 1)
-	klog.Infof("Starting Instaslice Namespace Controller")
-	go instasliceControllerNS.Run(ctx, 1)
 	klog.Infof("Starting Webhook Server")
 	// go mutatingWebhookServer.Run(ctx)
 

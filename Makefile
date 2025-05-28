@@ -49,26 +49,31 @@ endif
 
 
 regen-crd:
-	go build -o _output/tools/bin/controller-gen ./vendor/sigs.k8s.io/controller-tools/cmd/controller-gen
+	mkdir -p _output/tmp
+	TMPDIR=$$(pwd)/_output/tmp GOCACHE=$$(pwd)/_output/tmp go build -o _output/tools/bin/controller-gen ./vendor/sigs.k8s.io/controller-tools/cmd/controller-gen
 	rm -f manifests/instaslice-operator.crd.yaml
-	./_output/tools/bin/controller-gen crd paths=./pkg/apis/instasliceoperator/v1alpha1/... schemapatch:manifests=./manifests output:crd:dir=./manifests
+	TMPDIR=$$(pwd)/_output/tmp GOCACHE=$$(pwd)/_output/tmp ./_output/tools/bin/controller-gen crd paths=./pkg/apis/instasliceoperator/v1alpha1/... schemapatch:manifests=./manifests output:crd:dir=./manifests
 	mv manifests/inference.redhat.com_instasliceoperators.yaml manifests/instaslice-operator.crd.yaml
 	cp manifests/instaslice-operator.crd.yaml deploy/00_instaslice-operator.crd.yaml
 	cp manifests/inference.redhat.com_instaslices.yaml deploy/00_instaslices.crd.yaml
 
 build-images:
 	podman build -f Dockerfile.ocp -t ${IMAGE_REGISTRY}/instaslice-operator:${IMAGE_TAG} .
-	podman push ${IMAGE_REGISTRY}/instaslice-operator:${IMAGE_TAG}
 	podman build -f Dockerfile.daemonset.ocp -t ${IMAGE_REGISTRY}/instaslice-daemonset:${IMAGE_TAG} .
-	podman push ${IMAGE_REGISTRY}/instaslice-daemonset:${IMAGE_TAG}
 	podman build -f Dockerfile.webhook.ocp -t ${IMAGE_REGISTRY}/instaslice-webhook:${IMAGE_TAG} .
+
+push-images: build-images
+	podman push ${IMAGE_REGISTRY}/instaslice-operator:${IMAGE_TAG}
+	podman push ${IMAGE_REGISTRY}/instaslice-daemonset:${IMAGE_TAG}
 	podman push ${IMAGE_REGISTRY}/instaslice-webhook:${IMAGE_TAG}
+
+.PHONY: build-images push-images
 
 generate: regen-crd generate-clients
 .PHONY: generate
 
 generate-clients:
-	GO=GO111MODULE=on GOFLAGS=-mod=readonly hack/update-codegen.sh
+	TMPDIR=$$(pwd)/_output/tmp GOCACHE=$$(pwd)/_output/tmp GOBIN=$$(pwd)/_output/tools/bin PATH=$$(pwd)/_output/tools/bin:$$PATH GO=GO111MODULE=on GOFLAGS=-mod=readonly hack/update-codegen.sh
 .PHONY: generate-clients
 
 verify-codegen:

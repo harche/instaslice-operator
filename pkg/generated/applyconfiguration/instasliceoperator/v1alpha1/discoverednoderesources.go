@@ -26,6 +26,7 @@ type DiscoveredNodeResourcesApplyConfiguration struct {
 	NodeGPUs      []DiscoveredGPUApplyConfiguration `json:"nodeGpus,omitempty"`
 	MigPlacement  map[string]MigApplyConfiguration  `json:"migPlacement,omitempty"`
 	NodeResources *v1.ResourceList                  `json:"nodeResources,omitempty"`
+	BootID        *string                           `json:"bootId,omitempty"`
 }
 
 // DiscoveredNodeResourcesApplyConfiguration constructs a declarative configuration of the DiscoveredNodeResources type for use with
@@ -66,5 +67,13 @@ func (b *DiscoveredNodeResourcesApplyConfiguration) WithMigPlacement(entries map
 // If called multiple times, the NodeResources field is set to the value of the last call.
 func (b *DiscoveredNodeResourcesApplyConfiguration) WithNodeResources(value v1.ResourceList) *DiscoveredNodeResourcesApplyConfiguration {
 	b.NodeResources = &value
+	return b
+}
+
+// WithBootID sets the BootID field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the BootID field is set to the value of the last call.
+func (b *DiscoveredNodeResourcesApplyConfiguration) WithBootID(value string) *DiscoveredNodeResourcesApplyConfiguration {
+	b.BootID = &value
 	return b
 }

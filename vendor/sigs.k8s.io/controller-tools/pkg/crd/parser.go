@@ -86,12 +86,6 @@ type Parser struct {
 	//       because the implementation is too difficult/clunky to promote them to category 3.
 	// TODO: Should we have a more formal mechanism for putting "type patterns" in each of the above categories?
 	AllowDangerousTypes bool
-
-	// IgnoreUnexportedFields specifies if unexported fields on the struct should be skipped
-	IgnoreUnexportedFields bool
-
-	// GenerateEmbeddedObjectMeta specifies if any embedded ObjectMeta should be generated
-	GenerateEmbeddedObjectMeta bool
 }
 
 func (p *Parser) init() {
@@ -181,7 +175,7 @@ func (p *Parser) NeedSchemaFor(typ TypeIdent) {
 	// avoid tripping recursive schemata, like ManagedFields, by adding an empty WIP schema
 	p.Schemata[typ] = apiext.JSONSchemaProps{}
 
-	schemaCtx := newSchemaContext(typ.Package, p, p.AllowDangerousTypes, p.IgnoreUnexportedFields)
+	schemaCtx := newSchemaContext(typ.Package, p, p.AllowDangerousTypes)
 	ctxForInfo := schemaCtx.ForInfo(info)
 
 	pkgMarkers, err := markers.PackageMarkers(p.Collector, typ.Package)

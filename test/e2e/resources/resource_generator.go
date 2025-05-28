@@ -19,7 +19,6 @@ package resources
 import (
 	"fmt"
 
-	"github.com/openshift/instaslice-operator/internal/controller"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -364,12 +363,12 @@ func GetClusterRoleBinding() *rbac.RoleBinding {
 	sub := rbac.Subject{
 		Kind:      "ServiceAccount",
 		Name:      "instaslice-operator-controller-manager",
-		Namespace: controller.InstaSliceOperatorNamespace,
+		Namespace: "instaslice-system",
 	}
 	return &rbac.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "metrics-reader-rolebinding",
-			Namespace: controller.InstaSliceOperatorNamespace,
+			Namespace: "instaslice-system",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":       "clusterrolebinding",
 				"app.kubernetes.io/instance":   "metrics-reader-rolebinding",
@@ -394,7 +393,7 @@ func GetClusterRole() *rbac.ClusterRole {
 	return &rbac.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "metrics-reader",
-			Namespace: controller.InstaSliceOperatorNamespace,
+			Namespace: "instaslice-system",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":       "clusterrole",
 				"app.kubernetes.io/instance":   "metrics-reader",
@@ -410,7 +409,7 @@ func GetMetricPod(token string) *corev1.Pod {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "curl-metrics",
-			Namespace: controller.InstaSliceOperatorNamespace,
+			Namespace: "instaslice-system",
 		},
 		Spec: corev1.PodSpec{
 			RestartPolicy:                 corev1.RestartPolicyNever,
@@ -425,7 +424,7 @@ func GetMetricPod(token string) *corev1.Pod {
 					},
 					Args: []string{"-c", fmt.Sprintf(
 						"curl -v -k -H 'Authorization: Bearer %s' https://%s.%s.svc.cluster.local:8443/metrics",
-						token, "instaslice-operator-controller-manager-metrics-service", controller.InstaSliceOperatorNamespace)},
+						token, "instaslice-operator-controller-manager-metrics-service", "instaslice-system")},
 				},
 			},
 		},

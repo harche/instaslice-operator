@@ -1,0 +1,13 @@
+./allocationrequest.go
+./allocationresult.go
+./allocationstatus.go
+./discoveredgpu.go
+./discoverednoderesources.go
+./instaslice.go
+./instasliceoperator.go
+./instasliceoperatorspec.go
+./instasliceoperatorstatus.go
+./instaslicespec.go
+./instaslicestatus.go
+./mig.go
+./placement.go

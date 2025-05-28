@@ -1,0 +1,5 @@
+./doc.go
+./generated_expansion.go
+./instaslice.go
+./instasliceoperator.go
+./instasliceoperator_client.go

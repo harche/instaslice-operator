@@ -1,27 +1,35 @@
 package webhook
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
-	"net/http"
-	"net/url"
+   "encoding/json"
+   "errors"
+   "fmt"
+   "io"
+   "net/http"
+   "net/url"
+   "strings"
 
-	admissionctl "sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+   admissionctl "sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	admissionv1 "k8s.io/api/admission/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/klog/v2"
+   admissionv1 "k8s.io/api/admission/v1"
+   corev1 "k8s.io/api/core/v1"
+   "k8s.io/apimachinery/pkg/runtime"
+   "k8s.io/apimachinery/pkg/runtime/serializer"
+   utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+   "k8s.io/klog/v2"
 )
 
 const validContentType string = "application/json"
 
 var (
-	scheme          = runtime.NewScheme()
-	admissionCodecs = serializer.NewCodecFactory(scheme)
+   scheme = runtime.NewScheme()
+   admissionCodecs = serializer.NewCodecFactory(scheme)
 )
+
+func init() {
+   utilruntime.Must(admissionv1.AddToScheme(scheme))
+   utilruntime.Must(corev1.AddToScheme(scheme))
+}
 
 // Dispatcher struct
 type Dispatcher struct {
@@ -46,7 +54,7 @@ func (d *Dispatcher) HandleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	request, _, err := ParseHTTPRequest(r)
+   request, _, err := ParseHTTPRequest(r)
 	// Problem parsing an AdmissionReview, so use BadRequest HTTP status code
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -55,12 +63,21 @@ func (d *Dispatcher) HandleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	SendResponse(w, d.hook.Authorized(request))
+   // Skip any resources other than Pods
+   if request.Kind.Kind != "Pod" {
+       w.Header().Set("Content-Type", "application/json")
+       SendResponse(w, admissionctl.Allowed("skip non-Pod resource"))
+       return
+   }
+   // Delegate to the Pod webhook
+   SendResponse(w, d.hook.Authorized(request))
 }
 
-// SendResponse Send the AdmissionReview.
-func SendResponse(w io.Writer, resp admissionctl.Response) {
-	encoder := json.NewEncoder(w)
+// SendResponse sends the AdmissionReview response.
+func SendResponse(w http.ResponseWriter, resp admissionctl.Response) {
+   // Set JSON content type
+   w.Header().Set("Content-Type", "application/json")
+   encoder := json.NewEncoder(w)
 	responseAdmissionReview := admissionv1.AdmissionReview{
 		Response: &resp.AdmissionResponse,
 	}
@@ -94,8 +111,9 @@ func ParseHTTPRequest(r *http.Request) (admissionctl.Request, admissionctl.Respo
 		return req, resp, err
 	}
 	contentType := r.Header.Get("Content-Type")
-	if contentType != validContentType {
-		err := fmt.Errorf("contentType=%s, expected application/json", contentType)
+	// allow application/json with optional charset or parameters
+	if !strings.HasPrefix(contentType, validContentType) {
+		err := fmt.Errorf("contentType=%s, expected %s", contentType, validContentType)
 		resp = admissionctl.Errored(http.StatusBadRequest, err)
 		return req, resp, err
 	}
