@@ -15,6 +15,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	corev1listers "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
@@ -76,7 +77,11 @@ func RunScheduler(ctx context.Context, cc *controllercmd.ControllerContext) erro
 	})
 
 	// Set up Instaslice CRD informer with indexer
-	instaClient, err := instaclient.NewForConfig(cc.ProtoKubeConfig)
+	// copy kubeconfig and force JSON to avoid protobuf serialization errors
+	instaCfg := rest.CopyConfig(cc.KubeConfig)
+	instaCfg.AcceptContentTypes = "application/json"
+	instaCfg.ContentType = "application/json"
+	instaClient, err := instaclient.NewForConfig(instaCfg)
 	if err != nil {
 		return fmt.Errorf("failed to create instaslice client: %w", err)
 	}
@@ -131,7 +136,7 @@ func RunScheduler(ctx context.Context, cc *controllercmd.ControllerContext) erro
 	go func() {
 		podIndexer := podInformer.GetIndexer()
 		instIndexer := instaInformer.GetIndexer()
-		for processNextWorkItem(ctx, kubeClient, nodeLister, podIndexer, instIndexer, queue) {
+		for processNextWorkItem(ctx, kubeClient, nodeLister, podIndexer, instIndexer, instaClient, queue) {
 		}
 	}()
 
@@ -185,7 +190,7 @@ func enqueuePodsForScheduling(podLister corev1listers.PodLister, queue workqueue
 }
 
 // processNextWorkItem processes items from the workqueue: fetch Pod, schedule, and bind.
-func processNextWorkItem(ctx context.Context, kubeClient kubernetes.Interface, nodeLister corev1listers.NodeLister, podIndexer cache.Indexer, instIndexer cache.Indexer, queue workqueue.TypedRateLimitingInterface[string]) bool {
+func processNextWorkItem(ctx context.Context, kubeClient kubernetes.Interface, nodeLister corev1listers.NodeLister, podIndexer cache.Indexer, instIndexer cache.Indexer, instaClient instaclient.Interface, queue workqueue.TypedRateLimitingInterface[string]) bool {
 	key, shutdown := queue.Get()
 	if shutdown {
 		return false
@@ -345,6 +350,20 @@ func processNextWorkItem(ctx context.Context, kubeClient kubernetes.Interface, n
 				uuid,
 				types.UID(pod.GetUID()),
 			)
+
+			// initialize and update allocation requests on Instaslice spec
+			if instObj.Spec.PodAllocationRequests == nil {
+				newMap := make(map[types.UID]instav1alpha1.AllocationRequest)
+				instObj.Spec.PodAllocationRequests = &newMap
+			}
+			(*instObj.Spec.PodAllocationRequests)[pod.GetUID()] = *allocRequest
+
+			// initialize and update allocation results on Instaslice status
+			if instObj.Status.PodAllocationResults == nil {
+				instObj.Status.PodAllocationResults = make(map[string]instav1alpha1.AllocationResult)
+			}
+			instObj.Status.PodAllocationResults[string(pod.GetUID())] = *allocResult
+
 			selectedGPU = uuid
 			break
 		}
@@ -352,6 +371,17 @@ func processNextWorkItem(ctx context.Context, kubeClient kubernetes.Interface, n
 			continue
 		}
 		selectedNode = node.Name
+
+		// persist allocation request and result on the Instaslice CR
+		updatedObj, err := instaClient.OpenShiftOperatorV1alpha1().Instaslices(instObj.Namespace).Update(ctx, instObj, metav1.UpdateOptions{})
+		if err != nil {
+			klog.ErrorS(err, "Failed to update Instaslice spec", "instaslice", instObj.Name)
+		} else {
+			if _, err := instaClient.OpenShiftOperatorV1alpha1().Instaslices(instObj.Namespace).UpdateStatus(ctx, updatedObj, metav1.UpdateOptions{}); err != nil {
+				klog.ErrorS(err, "Failed to update Instaslice status", "instaslice", instObj.Name)
+			}
+		}
+
 		break
 	}
 	if selectedNode == "" {
