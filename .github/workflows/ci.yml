@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
+      - name: Start minikube with CRI-O
+        uses: medyagh/setup-minikube@v0.0.16
+        with:
+          driver: docker
+          container-runtime: cri-o
+      - name: Start local registry
+        run: |
+          docker run -d -p 5000:5000 --name registry registry:2
+      - name: Deploy operator
+        run: EMULATED_MODE=enabled make deploy-k8s
