@@ -62,7 +62,7 @@ func TestListAndWatchInitialSpecs(t *testing.T) {
 		t.Fatalf("failed to configure cdi: %v", err)
 	}
 
-	specPath, _, err := WriteCDISpecForResource("vendor/class", "id1", nil, "")
+	specPath, _, err := WriteCDISpecForResource("vendor/class", "id1", nil, "", instav1.EmulatedModeDisabled)
 	if err != nil {
 		t.Fatalf("failed to write spec: %v", err)
 	}
@@ -338,7 +338,7 @@ func TestWriteCDISpecForResourceEnv(t *testing.T) {
 		t.Fatalf("failed to configure cdi: %v", err)
 	}
 
-	path, _, err := WriteCDISpecForResource("vendor/class", "id-env", nil, "NVIDIA_VISIBLE_DEVICES=foo")
+	path, _, err := WriteCDISpecForResource("vendor/class", "id-env", nil, "NVIDIA_VISIBLE_DEVICES=foo", instav1.EmulatedModeEnabled)
 	if err != nil {
 		t.Fatalf("failed to write spec: %v", err)
 	}
@@ -366,14 +366,14 @@ func TestWriteCDISpecForResourceWait(t *testing.T) {
 		t.Fatalf("failed to configure cdi: %v", err)
 	}
 
-	path, _, err := WriteCDISpecForResource("vendor/class", "id", nil, "")
+	path, _, err := WriteCDISpecForResource("vendor/class", "id", nil, "", instav1.EmulatedModeDisabled)
 	if err != nil {
 		t.Fatalf("failed to write spec: %v", err)
 	}
 
 	done := make(chan struct{})
 	go func() {
-		_, _, _ = WriteCDISpecForResource("vendor/class", "id", nil, "")
+		_, _, _ = WriteCDISpecForResource("vendor/class", "id", nil, "", instav1.EmulatedModeDisabled)
 		close(done)
 	}()
 

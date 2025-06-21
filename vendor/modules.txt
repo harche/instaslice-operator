@@ -5,10 +5,37 @@ cel.dev/expr
 ## explicit; go 1.16
 github.com/Azure/go-ansiterm
 github.com/Azure/go-ansiterm/winterm
+# github.com/NVIDIA/go-nvlib v0.7.2
+## explicit; go 1.20
+github.com/NVIDIA/go-nvlib/pkg/nvlib/device
+github.com/NVIDIA/go-nvlib/pkg/nvlib/info
 # github.com/NVIDIA/go-nvml v0.12.4-1
 ## explicit; go 1.20
 github.com/NVIDIA/go-nvml/pkg/dl
 github.com/NVIDIA/go-nvml/pkg/nvml
+# github.com/NVIDIA/nvidia-container-toolkit v1.17.8
+## explicit; go 1.22
+github.com/NVIDIA/nvidia-container-toolkit/internal/config/image
+github.com/NVIDIA/nvidia-container-toolkit/internal/discover
+github.com/NVIDIA/nvidia-container-toolkit/internal/dxcore
+github.com/NVIDIA/nvidia-container-toolkit/internal/edits
+github.com/NVIDIA/nvidia-container-toolkit/internal/info/drm
+github.com/NVIDIA/nvidia-container-toolkit/internal/info/proc
+github.com/NVIDIA/nvidia-container-toolkit/internal/ldcache
+github.com/NVIDIA/nvidia-container-toolkit/internal/logger
+github.com/NVIDIA/nvidia-container-toolkit/internal/lookup
+github.com/NVIDIA/nvidia-container-toolkit/internal/lookup/cuda
+github.com/NVIDIA/nvidia-container-toolkit/internal/lookup/root
+github.com/NVIDIA/nvidia-container-toolkit/internal/lookup/symlinks
+github.com/NVIDIA/nvidia-container-toolkit/internal/nvcaps
+github.com/NVIDIA/nvidia-container-toolkit/internal/nvsandboxutils
+github.com/NVIDIA/nvidia-container-toolkit/internal/oci
+github.com/NVIDIA/nvidia-container-toolkit/internal/platform-support/dgpu
+github.com/NVIDIA/nvidia-container-toolkit/internal/platform-support/tegra
+github.com/NVIDIA/nvidia-container-toolkit/internal/platform-support/tegra/csv
+github.com/NVIDIA/nvidia-container-toolkit/pkg/nvcdi
+github.com/NVIDIA/nvidia-container-toolkit/pkg/nvcdi/spec
+github.com/NVIDIA/nvidia-container-toolkit/pkg/nvcdi/transform
 # github.com/NYTimes/gziphandler v1.1.1
 ## explicit; go 1.11
 github.com/NYTimes/gziphandler
@@ -228,7 +255,7 @@ github.com/onsi/gomega/types
 # github.com/opencontainers/go-digest v1.0.0
 ## explicit; go 1.13
 github.com/opencontainers/go-digest
-# github.com/opencontainers/runtime-spec v1.2.0
+# github.com/opencontainers/runtime-spec v1.2.1
 ## explicit
 github.com/opencontainers/runtime-spec/specs-go
 # github.com/opencontainers/runtime-tools v0.9.1-0.20221107090550-2e043c6bd626

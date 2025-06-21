@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
@@ -23,7 +24,10 @@ import (
 	"k8s.io/client-go/rest"
 
 	nvml "github.com/NVIDIA/go-nvml/pkg/nvml"
+	nvcdi "github.com/NVIDIA/nvidia-container-toolkit/pkg/nvcdi"
+	nvcdispec "github.com/NVIDIA/nvidia-container-toolkit/pkg/nvcdi/spec"
 
+	"golang.org/x/sys/unix"
 	"tags.cncf.io/container-device-interface/pkg/cdi"
 	parser "tags.cncf.io/container-device-interface/pkg/parser"
 	cdispec "tags.cncf.io/container-device-interface/specs-go"
@@ -195,7 +199,7 @@ func (s *Server) Allocate(ctx context.Context, req *pluginapi.AllocateRequest) (
 		}
 
 		for _, id := range ids {
-			_, cdiDevices, err := WriteCDISpecForResource(s.Manager.ResourceName, id, annotations, envVar)
+			_, cdiDevices, err := WriteCDISpecForResource(s.Manager.ResourceName, id, annotations, envVar, s.EmulatedMode)
 			if err != nil {
 				return nil, err
 			}
@@ -419,10 +423,203 @@ func (s *Server) getAllocationsByNodeGPU(ctx context.Context, nodeName, profileN
 	return result[:count], nil
 }
 
+// deviceNodesForMIG returns the device nodes corresponding to the MIG device with the given UUID.
+// Errors are logged and returned so the caller can decide how to proceed.
+func deviceNodeFromPath(path string) (*cdispec.DeviceNode, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("stat device node: %w", err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return nil, fmt.Errorf("failed to get stat_t for %s", path)
+	}
+	mode := info.Mode()
+	return &cdispec.DeviceNode{
+		Path:        path,
+		HostPath:    path,
+		Type:        "c",
+		Major:       int64(unix.Major(stat.Rdev)),
+		Minor:       int64(unix.Minor(stat.Rdev)),
+		FileMode:    &mode,
+		Permissions: "rw",
+	}, nil
+}
+
+// deviceNodesForMIG returns the device nodes corresponding to the MIG device with the given UUID.
+// Errors are logged and returned so the caller can decide how to proceed.
+func deviceNodesForMIG(uuid string) ([]*cdispec.DeviceNode, error) {
+	if uuid == "" {
+		return nil, fmt.Errorf("empty MIG UUID")
+	}
+
+	if ret := nvml.Init(); ret != nvml.SUCCESS {
+		return nil, fmt.Errorf("nvml init failed: %v", ret)
+	}
+	defer nvml.Shutdown()
+
+	migDev, ret := nvml.DeviceGetHandleByUUID(uuid)
+	if ret != nvml.SUCCESS {
+		return nil, fmt.Errorf("get mig device by uuid: %v", ret)
+	}
+
+	minor, ret := nvml.DeviceGetMinorNumber(migDev)
+	if ret != nvml.SUCCESS {
+		parent, ret := nvml.DeviceGetDeviceHandleFromMigDeviceHandle(migDev)
+		if ret != nvml.SUCCESS {
+			return nil, fmt.Errorf("get parent device: %v", ret)
+		}
+		minor, ret = nvml.DeviceGetMinorNumber(parent)
+		if ret != nvml.SUCCESS {
+			return nil, fmt.Errorf("get minor number: %v", ret)
+		}
+	}
+
+	paths := []string{
+		fmt.Sprintf("/dev/nvidia%d", minor),
+		"/dev/nvidiactl",
+		// "/dev/nvidia-uvm" is intentionally omitted
+		"/dev/nvidia-uvm-tools",
+		"/dev/nvidia-modeset",
+	}
+
+	// include capability nodes if present
+	if entries, err := os.ReadDir("/dev/nvidia-caps"); err == nil {
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), "nvidia-cap") {
+				paths = append(paths, filepath.Join("/dev/nvidia-caps", e.Name()))
+			}
+		}
+	}
+
+	var nodes []*cdispec.DeviceNode
+	for _, p := range paths {
+		if node, err := deviceNodeFromPath(p); err == nil {
+			nodes = append(nodes, node)
+		} else if !os.IsNotExist(err) {
+			klog.ErrorS(err, "failed to get device node", "path", p)
+		}
+	}
+
+	if len(nodes) == 0 {
+		return nil, fmt.Errorf("no device nodes found for MIG %s", uuid)
+	}
+
+	return nodes, nil
+}
+
+func prefixHostPaths(spec *cdispec.Spec, driverRoot string) {
+	if spec == nil {
+		return
+	}
+	for _, dn := range spec.ContainerEdits.DeviceNodes {
+		if dn != nil && dn.HostPath != "" {
+			dn.HostPath = filepath.Join(driverRoot, strings.TrimPrefix(dn.HostPath, "/"))
+		}
+	}
+	for _, m := range spec.ContainerEdits.Mounts {
+		if m != nil && m.HostPath != "" {
+			m.HostPath = filepath.Join(driverRoot, strings.TrimPrefix(m.HostPath, "/"))
+		}
+	}
+	for i := range spec.Devices {
+		for _, dn := range spec.Devices[i].ContainerEdits.DeviceNodes {
+			if dn != nil && dn.HostPath != "" {
+				dn.HostPath = filepath.Join(driverRoot, strings.TrimPrefix(dn.HostPath, "/"))
+			}
+		}
+		for _, m := range spec.Devices[i].ContainerEdits.Mounts {
+			if m != nil && m.HostPath != "" {
+				m.HostPath = filepath.Join(driverRoot, strings.TrimPrefix(m.HostPath, "/"))
+			}
+		}
+	}
+}
+
+func removeDeviceNodePath(spec *cdispec.Spec, path string) {
+	if spec == nil {
+		return
+	}
+	var filtered []*cdispec.DeviceNode
+	for _, dn := range spec.ContainerEdits.DeviceNodes {
+		if dn == nil || dn.Path == path || dn.HostPath == path {
+			continue
+		}
+		filtered = append(filtered, dn)
+	}
+	spec.ContainerEdits.DeviceNodes = filtered
+	for i := range spec.Devices {
+		filtered = nil
+		for _, dn := range spec.Devices[i].ContainerEdits.DeviceNodes {
+			if dn == nil || dn.Path == path || dn.HostPath == path {
+				continue
+			}
+			filtered = append(filtered, dn)
+		}
+		spec.Devices[i].ContainerEdits.DeviceNodes = filtered
+	}
+}
+
+// buildSpecFromNVCdi generates a CDI spec for the given MIG UUID using the
+// NVIDIA nvcdi library. The generated spec is returned without being written to
+// disk. Any annotations provided are applied to the device entry and a
+// poststop hook is added to remove the spec at specPath. The returned spec is
+// nil if generation fails.
+func buildSpecFromNVCdi(kind, class, id string, annotations map[string]string, uuid, specPath string) (*cdispec.Spec, error) {
+	lib, err := nvcdi.New(
+		nvcdi.WithVendor(strings.Split(kind, "/")[0]),
+		nvcdi.WithClass(class),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	devSpecs, err := lib.GetDeviceSpecsByID(uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	edits, err := lib.GetCommonEdits()
+	if err != nil {
+		return nil, err
+	}
+
+	specIF, err := nvcdispec.New(
+		nvcdispec.WithDeviceSpecs(devSpecs),
+		nvcdispec.WithEdits(*edits.ContainerEdits),
+		nvcdispec.WithVendor(strings.Split(kind, "/")[0]),
+		nvcdispec.WithClass(class),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	spec := specIF.Raw()
+	prefixHostPaths(spec, "/run/nvidia/driver")
+	removeDeviceNodePath(spec, "/dev/nvidia-uvm")
+	for i := range spec.Devices {
+		spec.Devices[i].Name = id
+		if spec.Devices[i].Annotations == nil {
+			spec.Devices[i].Annotations = map[string]string{}
+		}
+		for k, v := range annotations {
+			spec.Devices[i].Annotations[k] = v
+		}
+		spec.Devices[i].ContainerEdits.Env = append(spec.Devices[i].ContainerEdits.Env, fmt.Sprintf("MIG_UUID=%s", uuid))
+		spec.Devices[i].ContainerEdits.Hooks = append(spec.Devices[i].ContainerEdits.Hooks, &cdispec.Hook{
+			HookName: "poststop",
+			Path:     "/bin/rm",
+			Args:     []string{"-f", specPath},
+		})
+	}
+
+	return spec, nil
+}
+
 // BuildCDIDevices builds a CDI spec and returns the spec object, spec name,
 // spec path, and the corresponding CDIDevice slice. This helper is exported so
 // that other packages (and tests) can generate CDI specs in a consistent way.
-func BuildCDIDevices(kind, sanitizedClass, id string, annotations map[string]string, envVar string) (*cdispec.Spec, string, string, []*pluginapi.CDIDevice) {
+func BuildCDIDevices(kind, sanitizedClass, id string, annotations map[string]string, envVar string, emulated instav1.EmulatedMode) (*cdispec.Spec, string, string, []*pluginapi.CDIDevice) {
 	specNameBase := fmt.Sprintf("%s_%s", sanitizedClass, id)
 	specName := specNameBase + ".cdi.json"
 
@@ -434,12 +631,38 @@ func BuildCDIDevices(kind, sanitizedClass, id string, annotations map[string]str
 	specPath := filepath.Join(dynamicDir, specName)
 
 	// TODO - Do we need to create a CDI spec for each device Allocate request? can we not use a single spec for all devices of the same kind?
-	env := []string{"NVIDIA_VISIBLE_DEVICES=test", "CUDA_VISIBLE_DEVICES=test"}
-	if envVar != "" {
-		env = []string{envVar}
-		if eq := strings.Index(envVar, "="); eq != -1 {
-			val := envVar[eq+1:]
-			env = append(env, fmt.Sprintf("CUDA_VISIBLE_DEVICES=%s", val))
+	var env []string
+	var deviceNodes []*cdispec.DeviceNode
+	if emulated == instav1.EmulatedModeEnabled {
+		env = []string{"NVIDIA_VISIBLE_DEVICES=test", "CUDA_VISIBLE_DEVICES=test"}
+		if envVar != "" {
+			env = []string{envVar}
+			if eq := strings.Index(envVar, "="); eq != -1 {
+				val := envVar[eq+1:]
+				env = append(env, fmt.Sprintf("CUDA_VISIBLE_DEVICES=%s", val))
+			}
+		}
+	} else {
+		// envVar contains the MIG UUID in non-emulated mode
+		if envVar != "" {
+			uuid := strings.TrimPrefix(envVar, "NVIDIA_VISIBLE_DEVICES=")
+
+			if spec, err := buildSpecFromNVCdi(kind, sanitizedClass, id, annotations, uuid, specPath); err == nil {
+				cdiDevices := make([]*pluginapi.CDIDevice, len(spec.Devices))
+				for j, dev := range spec.Devices {
+					cdiDevices[j] = &pluginapi.CDIDevice{Name: fmt.Sprintf("%s=%s", kind, dev.Name)}
+				}
+				return spec, specName, specPath, cdiDevices
+			} else {
+				klog.ErrorS(err, "failed to generate CDI spec using nvcdi, falling back", "uuid", uuid)
+			}
+
+			env = []string{fmt.Sprintf("MIG_UUID=%s", uuid)}
+			if nodes, err := deviceNodesForMIG(uuid); err == nil {
+				deviceNodes = nodes
+			} else {
+				klog.ErrorS(err, "failed to get device nodes for MIG device", "uuid", uuid)
+			}
 		}
 	}
 	specObj := &cdispec.Spec{
@@ -450,7 +673,8 @@ func BuildCDIDevices(kind, sanitizedClass, id string, annotations map[string]str
 				Name:        id,
 				Annotations: annotations,
 				ContainerEdits: cdispec.ContainerEdits{
-					Env: env,
+					Env:         env,
+					DeviceNodes: deviceNodes,
 					Hooks: []*cdispec.Hook{
 						{
 							HookName: "poststop",
@@ -462,6 +686,10 @@ func BuildCDIDevices(kind, sanitizedClass, id string, annotations map[string]str
 			},
 		},
 	}
+
+	prefixHostPaths(specObj, "/run/nvidia/driver")
+	removeDeviceNodePath(specObj, "/dev/nvidia-uvm")
+	removeDeviceNodePath(specObj, "/dev/nvidia-uvm-tools")
 
 	cdiDevices := make([]*pluginapi.CDIDevice, len(specObj.Devices))
 	for j, dev := range specObj.Devices {
@@ -475,7 +703,7 @@ func BuildCDIDevices(kind, sanitizedClass, id string, annotations map[string]str
 // WriteCDISpecForResource parses the given resource name, generates a CDI spec
 // using BuildCDIDevices and writes it to the CDI cache. It returns the path to
 // the written spec along with the generated CDIDevices.
-func WriteCDISpecForResource(resourceName string, id string, annotations map[string]string, envVar string) (string, []*pluginapi.CDIDevice, error) {
+func WriteCDISpecForResource(resourceName string, id string, annotations map[string]string, envVar string, emulated instav1.EmulatedMode) (string, []*pluginapi.CDIDevice, error) {
 	vendor, class := parser.ParseQualifier(resourceName)
 	sanitizedClass := class
 	if err := parser.ValidateClassName(sanitizedClass); err != nil {
@@ -486,7 +714,7 @@ func WriteCDISpecForResource(resourceName string, id string, annotations map[str
 		kind = vendor + "/" + sanitizedClass
 	}
 
-	specObj, specName, specPath, cdiDevices := BuildCDIDevices(kind, sanitizedClass, id, annotations, envVar)
+	specObj, specName, specPath, cdiDevices := BuildCDIDevices(kind, sanitizedClass, id, annotations, envVar, emulated)
 
 	// Wait for any previous spec with the same name to be removed. This is
 	// important for transient specs tied to container lifecycles. The
@@ -521,6 +749,6 @@ func WriteCDISpecForResource(resourceName string, id string, annotations map[str
 // It simply calls the exported WriteCDISpecForResource function and discards the
 // returned spec path.
 func (s *Server) writeCDISpecForResource(resourceName string, id string) ([]*pluginapi.CDIDevice, error) {
-	_, devices, err := WriteCDISpecForResource(resourceName, id, nil, "")
+	_, devices, err := WriteCDISpecForResource(resourceName, id, nil, "", s.EmulatedMode)
 	return devices, err
 }
