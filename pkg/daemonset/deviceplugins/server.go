@@ -306,9 +306,9 @@ func (s *Server) prepareEnv(ctx context.Context, alloc *instav1.AllocationClaim)
 			klog.ErrorS(err, "failed to marshal allocation")
 		}
 
-		if s.KubeClient != nil {
-			s.ensureEnvConfigMap(ctx, alloc, envVar)
-		}
+		// if s.KubeClient != nil {
+		// 	s.ensureEnvConfigMap(ctx, alloc, envVar)
+		// }
 	}
 
 	return envVar, annotations, nil

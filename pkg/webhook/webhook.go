@@ -91,7 +91,7 @@ func (s *InstasliceWebhook) Authorized(request admissionctl.Request) admissionct
 func (s *InstasliceWebhook) mutatePod(pod *corev1.Pod) ([]byte, error) {
 	klog.InfoS("Mutating Pod structure", "name", pod.Name, "namespace", pod.Namespace)
 	mutatedPod := pod.DeepCopy()
-	needsScheduler := false
+	// needsScheduler := false
 
 	mutateResources := func(c *corev1.Container) {
 		if c.Resources.Limits == nil {
@@ -110,17 +110,17 @@ func (s *InstasliceWebhook) mutatePod(pod *corev1.Pod) ([]byte, error) {
 				klog.InfoS("renaming GPU resource", "from", key, "to", newKey)
 				newLimits[newKey] = qty
 				newRequests[newKey] = qty
-				needsScheduler = true
+				// needsScheduler = true
 			case strings.HasPrefix(key, "nvidia.com/"):
 				newKey := corev1.ResourceName(strings.Replace(key, "nvidia.com/", "mig.das.com/", 1))
 				klog.InfoS("renaming GPU resource", "from", key, "to", newKey)
 				newLimits[newKey] = qty
 				newRequests[newKey] = qty
-				needsScheduler = true
+				// needsScheduler = true
 			default:
 				newLimits[name] = qty
-				if strings.HasPrefix(key, "mig.das.com/") {
-					needsScheduler = true
+				// if strings.HasPrefix(key, "mig.das.com/") {
+					// needsScheduler = true
 				}
 			}
 		}
@@ -146,78 +146,78 @@ func (s *InstasliceWebhook) mutatePod(pod *corev1.Pod) ([]byte, error) {
 	for i := range mutatedPod.Spec.InitContainers {
 		mutateResources(&mutatedPod.Spec.InitContainers[i])
 	}
-	for i := range mutatedPod.Spec.EphemeralContainers {
-		c := (*corev1.Container)(&mutatedPod.Spec.EphemeralContainers[i].EphemeralContainerCommon)
-		mutateResources(c)
-	}
+	// for i := range mutatedPod.Spec.EphemeralContainers {
+	// 	c := (*corev1.Container)(&mutatedPod.Spec.EphemeralContainers[i].EphemeralContainerCommon)
+	// 	mutateResources(c)
+	// }
 
-	if needsScheduler {
-		mutatedPod.Spec.SchedulerName = secondaryScheduler
-		klog.InfoS("using secondary scheduler", "name", mutatedPod.Name)
+	// if needsScheduler {
+	// 	mutatedPod.Spec.SchedulerName = secondaryScheduler
+	// 	klog.InfoS("using secondary scheduler", "name", mutatedPod.Name)
 
-		// addEnv injects or overwrites ConfigMap-backed environment variables so
-		// the scheduler can identify which GPU slice was allocated to the pod.
-		addEnv := func(c *corev1.Container) {
-			if mutatedPod.Name == "" {
-				return
-			}
+	// 	// addEnv injects or overwrites ConfigMap-backed environment variables so
+	// 	// the scheduler can identify which GPU slice was allocated to the pod.
+	// 	addEnv := func(c *corev1.Container) {
+	// 		if mutatedPod.Name == "" {
+	// 			return
+	// 		}
 
-			nvidiaVar := corev1.EnvVar{
-				Name: "NVIDIA_VISIBLE_DEVICES",
-				ValueFrom: &corev1.EnvVarSource{
-					ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{Name: mutatedPod.Name},
-						Key:                  "NVIDIA_VISIBLE_DEVICES",
-					},
-				},
-			}
-			cudaVar := corev1.EnvVar{
-				Name: "CUDA_VISIBLE_DEVICES",
-				ValueFrom: &corev1.EnvVarSource{
-					ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{Name: mutatedPod.Name},
-						Key:                  "CUDA_VISIBLE_DEVICES",
-					},
-				},
-			}
+	// 		nvidiaVar := corev1.EnvVar{
+	// 			Name: "NVIDIA_VISIBLE_DEVICES",
+	// 			ValueFrom: &corev1.EnvVarSource{
+	// 				ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+	// 					LocalObjectReference: corev1.LocalObjectReference{Name: mutatedPod.Name},
+	// 					Key:                  "NVIDIA_VISIBLE_DEVICES",
+	// 				},
+	// 			},
+	// 		}
+	// 		cudaVar := corev1.EnvVar{
+	// 			Name: "CUDA_VISIBLE_DEVICES",
+	// 			ValueFrom: &corev1.EnvVarSource{
+	// 				ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+	// 					LocalObjectReference: corev1.LocalObjectReference{Name: mutatedPod.Name},
+	// 					Key:                  "CUDA_VISIBLE_DEVICES",
+	// 				},
+	// 			},
+	// 		}
 
-			replacedNvidia := false
-			replacedCuda := false
-			for i := range c.Env {
-				switch c.Env[i].Name {
-				case "NVIDIA_VISIBLE_DEVICES":
-					c.Env[i] = nvidiaVar
-					replacedNvidia = true
-				case "CUDA_VISIBLE_DEVICES":
-					c.Env[i] = cudaVar
-					replacedCuda = true
-				}
-			}
-			if !replacedNvidia {
-				klog.InfoS("setting NVIDIA_VISIBLE_DEVICES", "container", c.Name)
-				c.Env = append(c.Env, nvidiaVar)
-			} else {
-				klog.InfoS("overwriting NVIDIA_VISIBLE_DEVICES", "container", c.Name)
-			}
-			if !replacedCuda {
-				klog.InfoS("setting CUDA_VISIBLE_DEVICES", "container", c.Name)
-				c.Env = append(c.Env, cudaVar)
-			} else {
-				klog.InfoS("overwriting CUDA_VISIBLE_DEVICES", "container", c.Name)
-			}
-		}
+	// 		replacedNvidia := false
+	// 		replacedCuda := false
+	// 		for i := range c.Env {
+	// 			switch c.Env[i].Name {
+	// 			case "NVIDIA_VISIBLE_DEVICES":
+	// 				c.Env[i] = nvidiaVar
+	// 				replacedNvidia = true
+	// 			case "CUDA_VISIBLE_DEVICES":
+	// 				c.Env[i] = cudaVar
+	// 				replacedCuda = true
+	// 			}
+	// 		}
+	// 		if !replacedNvidia {
+	// 			klog.InfoS("setting NVIDIA_VISIBLE_DEVICES", "container", c.Name)
+	// 			c.Env = append(c.Env, nvidiaVar)
+	// 		} else {
+	// 			klog.InfoS("overwriting NVIDIA_VISIBLE_DEVICES", "container", c.Name)
+	// 		}
+	// 		if !replacedCuda {
+	// 			klog.InfoS("setting CUDA_VISIBLE_DEVICES", "container", c.Name)
+	// 			c.Env = append(c.Env, cudaVar)
+	// 		} else {
+	// 			klog.InfoS("overwriting CUDA_VISIBLE_DEVICES", "container", c.Name)
+	// 		}
+	// 	}
 
-		for i := range mutatedPod.Spec.Containers {
-			addEnv(&mutatedPod.Spec.Containers[i])
-		}
-		for i := range mutatedPod.Spec.InitContainers {
-			addEnv(&mutatedPod.Spec.InitContainers[i])
-		}
-		for i := range mutatedPod.Spec.EphemeralContainers {
-			c := (*corev1.Container)(&mutatedPod.Spec.EphemeralContainers[i].EphemeralContainerCommon)
-			addEnv(c)
-		}
-	}
+	// 	for i := range mutatedPod.Spec.Containers {
+	// 		addEnv(&mutatedPod.Spec.Containers[i])
+	// 	}
+	// 	for i := range mutatedPod.Spec.InitContainers {
+	// 		addEnv(&mutatedPod.Spec.InitContainers[i])
+	// 	}
+	// 	for i := range mutatedPod.Spec.EphemeralContainers {
+	// 		c := (*corev1.Container)(&mutatedPod.Spec.EphemeralContainers[i].EphemeralContainerCommon)
+	// 		addEnv(c)
+	// 	}
+	// }
 
 	klog.InfoS("finished pod mutation", "mutatedPod", mutatedPod)
 	return json.Marshal(mutatedPod)
