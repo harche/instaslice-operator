@@ -109,6 +109,24 @@ func (s *InstasliceWebhook) mutatePod(pod *corev1.Pod) ([]byte, error) {
 		for name, qty := range c.Resources.Limits {
 			key := string(name)
 			switch {
+			case key == gpuMemoryResourcePrefix:
+				// Handle direct GPU memory requests - map to appropriate MIG slice
+				memGB := qty.Value()
+				if memGB > 0 {
+					migProfile := mapGPUMemoryToMIGProfile(memGB)
+					if migProfile != "" {
+						newKey := corev1.ResourceName("mig.das.com/" + migProfile)
+						klog.InfoS("mapping GPU memory request to MIG profile", "memory_gb", memGB, "mig_profile", migProfile)
+						newLimits[newKey] = qty
+						newRequests[newKey] = qty
+						needsScheduler = true
+					} else {
+						// Keep the original gpu.das.com/mem request if no suitable MIG profile found
+						klog.InfoS("no suitable MIG profile found for GPU memory request", "memory_gb", memGB)
+						newLimits[name] = qty
+						needsScheduler = true
+					}
+				}
 			case strings.HasPrefix(key, "nvidia.com/mig-"):
 				profile := strings.TrimPrefix(key, "nvidia.com/mig-")
 				newKey := corev1.ResourceName("mig.das.com/" + profile)
@@ -141,7 +159,7 @@ func (s *InstasliceWebhook) mutatePod(pod *corev1.Pod) ([]byte, error) {
 
 		for name, qty := range c.Resources.Requests {
 			key := string(name)
-			if !strings.HasPrefix(key, "nvidia.com/") && !strings.HasPrefix(key, "mig.das.com/") {
+			if !strings.HasPrefix(key, "nvidia.com/") && !strings.HasPrefix(key, "mig.das.com/") && key != gpuMemoryResourcePrefix {
 				newRequests[name] = qty
 			}
 		}
@@ -249,6 +267,28 @@ func extractGPUMemoryFromProfile(profile string) int64 {
 		}
 	}
 	return 0
+}
+
+// mapGPUMemoryToMIGProfile maps a GPU memory request in GB to the most suitable MIG profile
+// This function implements a simple mapping strategy - you can enhance it based on your needs
+func mapGPUMemoryToMIGProfile(memGB int64) string {
+	// Define available MIG profiles and their memory requirements
+	// This mapping can be enhanced to be more sophisticated or configurable
+	switch {
+	case memGB <= 5:
+		return "1g.5gb"
+	case memGB <= 10:
+		return "2g.10gb"
+	case memGB <= 20:
+		return "3g.20gb"
+	case memGB <= 40:
+		return "7g.40gb"
+	case memGB <= 80:
+		return "7g.80gb"
+	default:
+		// For very large memory requests, return empty string to indicate no suitable profile
+		return ""
+	}
 }
 
 func (s *InstasliceWebhook) renderPod(request admissionctl.Request) (*corev1.Pod, error) {

@@ -328,3 +328,93 @@ func TestMutatePodGPUMemoryInjection(t *testing.T) {
 		t.Fatalf("expected gpu.das.com/mem resource with quantity 10, got %v", gpuMemResource)
 	}
 }
+
+func TestMutatePodDirectGPUMemoryRequest(t *testing.T) {
+	hook := &InstasliceWebhook{}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "direct-gpu-mem-test"},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Name:  "test",
+					Image: "nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda12.5.0-ubi8",
+					Resources: corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceName("gpu.das.com/mem"): resource.MustParse("10"),
+						},
+						Requests: corev1.ResourceList{
+							corev1.ResourceName("gpu.das.com/mem"): resource.MustParse("10"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	data, err := hook.mutatePod(pod)
+	if err != nil {
+		t.Fatalf("mutatePod returned error: %v", err)
+	}
+
+	mutated := &corev1.Pod{}
+	if err := json.Unmarshal(data, mutated); err != nil {
+		t.Fatalf("failed to unmarshal mutated pod: %v", err)
+	}
+
+	limits := mutated.Spec.Containers[0].Resources.Limits
+
+	// Check that the MIG resource was added and mapped correctly
+	migResource, ok := limits[corev1.ResourceName("mig.das.com/2g.10gb")]
+	if !ok || migResource.Value() != 10 {
+		t.Fatalf("expected mig.das.com/2g.10gb resource with quantity 10, got %v", migResource)
+	}
+
+	// Check that the original gpu.das.com/mem resource is not present
+	if _, ok := limits[corev1.ResourceName("gpu.das.com/mem")]; ok {
+		t.Fatalf("gpu.das.com/mem resource should have been mapped and removed")
+	}
+}
+
+// mapGPUMemoryToMIGProfile maps a GPU memory request in GB to the most suitable MIG profile
+// This function implements a simple mapping strategy - you can enhance it based on your needs
+func mapGPUMemoryToMIGProfile(memGB int64) string {
+	// Define available MIG profiles and their memory requirements
+	// This mapping can be enhanced to be more sophisticated or configurable
+	switch {
+	case memGB <= 5:
+		return "1g.5gb"
+	case memGB <= 10:
+		return "2g.10gb"
+	case memGB <= 20:
+		return "3g.20gb"
+	case memGB <= 40:
+		return "7g.40gb"
+	case memGB <= 80:
+		return "7g.80gb"
+	default:
+		// For very large memory requests, return empty string to indicate no suitable profile
+		return ""
+	}
+}
+
+// extractGPUMemoryFromProfile extracts the GPU memory requirement from a MIG profile string
+func extractGPUMemoryFromProfile(profile string) int64 {
+	// This function is a placeholder. In a real scenario, you would parse the profile string
+	// to determine the memory requirement.
+	// For example, "1g.5gb" -> 5, "2g.10gb" -> 10, etc.
+	// For now, we'll return a default or 0 if not recognized.
+	switch profile {
+	case "1g.5gb":
+		return 5
+	case "2g.10gb":
+		return 10
+	case "3g.20gb":
+		return 20
+	case "7g.40gb":
+		return 40
+	case "7g.80gb":
+		return 80
+	default:
+		return 0
+	}
+}
