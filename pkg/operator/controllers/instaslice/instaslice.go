@@ -2,8 +2,10 @@ package instaslice
 
 import (
 	"context"
+	"time"
 
 	clientset "github.com/openshift/instaslice-operator/pkg/generated/clientset/versioned"
+	"github.com/openshift/instaslice-operator/pkg/metrics"
 
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
@@ -43,16 +45,25 @@ func NewInstasliceController(config *InstasliceControllerConfig) factory.Control
 }
 
 func (c *InstasliceController) sync(ctx context.Context, syncCtx factory.SyncContext) error {
+	startTime := time.Now()
 	instasliceName := syncCtx.QueueKey()
 
 	klog.V(2).InfoS("Instaslice Sync", "queue_key", instasliceName)
 
 	slice, err := c.instasliceClient.OpenShiftOperatorV1alpha1().NodeAccelerators(c.namespace).Get(ctx, instasliceName, metav1.GetOptions{})
 	if err != nil {
+		duration := time.Since(startTime)
+		metrics.ReconcileTotal.WithLabelValues("InstasliceController", "error").Inc()
+		metrics.ReconcileDurationSeconds.WithLabelValues("InstasliceController").Observe(duration.Seconds())
+		metrics.ErrorsTotal.WithLabelValues("instaslice_controller", "get_failed").Inc()
 		return err
 	}
 
 	klog.V(2).InfoS("Slice", "slice", slice)
+
+	duration := time.Since(startTime)
+	metrics.ReconcileTotal.WithLabelValues("InstasliceController", "success").Inc()
+	metrics.ReconcileDurationSeconds.WithLabelValues("InstasliceController").Observe(duration.Seconds())
 
 	return nil
 }

@@ -320,7 +320,7 @@ spec:
                 imagePullPolicy: Always
                 name: instaslice-operator
                 ports:
-                - containerPort: 60000
+                - containerPort: 8080
                   name: metrics
                 resources: {}
                 securityContext:

@@ -36,6 +36,7 @@ import (
 	utiluuid "k8s.io/apimachinery/pkg/util/uuid"
 
 	instav1 "github.com/openshift/instaslice-operator/pkg/apis/dasoperator/v1alpha1"
+	"github.com/openshift/instaslice-operator/pkg/metrics"
 )
 
 var _ pluginapi.DevicePluginServer = (*Server)(nil)
@@ -217,6 +218,7 @@ func (s *Server) ListAndWatch(req *pluginapi.Empty, stream pluginapi.DevicePlugi
 }
 
 func (s *Server) Allocate(ctx context.Context, req *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
+	startTime := time.Now()
 	klog.InfoS("Received Allocate request", "containerRequests", req.GetContainerRequests(), "emulatedMode", s.EmulatedMode)
 
 	total := 0
@@ -235,6 +237,9 @@ func (s *Server) Allocate(ctx context.Context, req *pluginapi.AllocateRequest) (
 
 	allocations, err := s.getAllocationsByNodeGPU(ctx, s.NodeName, s.Manager.ResourceName, total)
 	if err != nil {
+		duration := time.Since(startTime)
+		metrics.SliceProvisionTotal.WithLabelValues("error", s.Manager.ResourceName, s.NodeName).Inc()
+		metrics.SliceProvisionLatencySeconds.WithLabelValues(s.Manager.ResourceName, s.NodeName).Observe(duration.Seconds())
 		klog.ErrorS(err, "failed to get allocations", "node", s.NodeName, "profile", s.Manager.ResourceName)
 	} else {
 		klog.InfoS("Fetched allocations for Allocate", "count", len(allocations), "node", s.NodeName, "profile", s.Manager.ResourceName)
@@ -259,22 +264,35 @@ func (s *Server) Allocate(ctx context.Context, req *pluginapi.AllocateRequest) (
 
 			envVar, annotations, err := s.prepareEnv(ctx, alloc)
 			if err != nil {
+				duration := time.Since(startTime)
+				metrics.SliceProvisionTotal.WithLabelValues("error", s.Manager.ResourceName, s.NodeName).Inc()
+				metrics.SliceProvisionLatencySeconds.WithLabelValues(s.Manager.ResourceName, s.NodeName).Observe(duration.Seconds())
 				return nil, err
 			}
 
 			_, cdiDevices, err := WriteCDISpecForResource(s.Manager.ResourceName, id, annotations, envVar)
 			if err != nil {
+				duration := time.Since(startTime)
+				metrics.SliceProvisionTotal.WithLabelValues("error", s.Manager.ResourceName, s.NodeName).Inc()
+				metrics.SliceProvisionLatencySeconds.WithLabelValues(s.Manager.ResourceName, s.NodeName).Observe(duration.Seconds())
 				return nil, err
 			}
 			resp.ContainerResponses[i].CDIDevices = append(resp.ContainerResponses[i].CDIDevices, cdiDevices...)
 
 			if alloc != nil {
 				if err := s.markAllocationInUse(ctx, alloc); err != nil {
+					duration := time.Since(startTime)
+					metrics.SliceProvisionTotal.WithLabelValues("error", s.Manager.ResourceName, s.NodeName).Inc()
+					metrics.SliceProvisionLatencySeconds.WithLabelValues(s.Manager.ResourceName, s.NodeName).Observe(duration.Seconds())
 					return nil, err
 				}
 			}
 		}
 	}
+
+	duration := time.Since(startTime)
+	metrics.SliceProvisionTotal.WithLabelValues("success", s.Manager.ResourceName, s.NodeName).Inc()
+	metrics.SliceProvisionLatencySeconds.WithLabelValues(s.Manager.ResourceName, s.NodeName).Observe(duration.Seconds())
 
 	return resp, nil
 }
@@ -410,32 +428,51 @@ func (s *Server) markAllocationInUse(ctx context.Context, alloc *instav1.Allocat
 // the AllocationClaim. It looks up the GI and CI profile IDs from the
 // discovered node resources stored in the Manager.
 func (s *Server) createMigSlice(alloc *instav1.AllocationClaim) (string, error) {
+	startTime := time.Now()
 	spec, err := getAllocationClaimSpec(alloc)
 	if err != nil {
+		duration := time.Since(startTime)
+		metrics.SliceProvisionTotal.WithLabelValues("error", spec.Profile, s.NodeName).Inc()
+		metrics.SliceProvisionLatencySeconds.WithLabelValues(spec.Profile, s.NodeName).Observe(duration.Seconds())
 		return "", err
 	}
 	mig, ok := s.Manager.resources.MigPlacement[spec.Profile]
 	if !ok {
+		duration := time.Since(startTime)
+		metrics.SliceProvisionTotal.WithLabelValues("error", spec.Profile, s.NodeName).Inc()
+		metrics.SliceProvisionLatencySeconds.WithLabelValues(spec.Profile, s.NodeName).Observe(duration.Seconds())
 		return "", fmt.Errorf("profile %s not found", spec.Profile)
 	}
 
 	if err := EnsureNvmlInitialized(); err != nil {
+		duration := time.Since(startTime)
+		metrics.SliceProvisionTotal.WithLabelValues("error", spec.Profile, s.NodeName).Inc()
+		metrics.SliceProvisionLatencySeconds.WithLabelValues(spec.Profile, s.NodeName).Observe(duration.Seconds())
 		return "", err
 	}
 
 	dev, ret := nvml.DeviceGetHandleByUUID(spec.GPUUUID)
 	if ret != nvml.SUCCESS {
+		duration := time.Since(startTime)
+		metrics.SliceProvisionTotal.WithLabelValues("error", spec.Profile, s.NodeName).Inc()
+		metrics.SliceProvisionLatencySeconds.WithLabelValues(spec.Profile, s.NodeName).Observe(duration.Seconds())
 		return "", fmt.Errorf("get device %s: %v", spec.GPUUUID, ret)
 	}
 
 	giInfo, ret := dev.GetGpuInstanceProfileInfo(int(mig.GIProfileID))
 	if ret != nvml.SUCCESS {
+		duration := time.Since(startTime)
+		metrics.SliceProvisionTotal.WithLabelValues("error", spec.Profile, s.NodeName).Inc()
+		metrics.SliceProvisionLatencySeconds.WithLabelValues(spec.Profile, s.NodeName).Observe(duration.Seconds())
 		return "", fmt.Errorf("get GI profile info: %v", ret)
 	}
 
 	placement := nvml.GpuInstancePlacement{Start: uint32(spec.MigPlacement.Start), Size: uint32(spec.MigPlacement.Size)}
 	gpuInst, ret := dev.CreateGpuInstanceWithPlacement(&giInfo, &placement)
 	if ret != nvml.SUCCESS {
+		duration := time.Since(startTime)
+		metrics.SliceProvisionTotal.WithLabelValues("error", spec.Profile, s.NodeName).Inc()
+		metrics.SliceProvisionLatencySeconds.WithLabelValues(spec.Profile, s.NodeName).Observe(duration.Seconds())
 		return "", fmt.Errorf("create GPU instance: %v", ret)
 	}
 
@@ -444,6 +481,9 @@ func (s *Server) createMigSlice(alloc *instav1.AllocationClaim) (string, error) 
 		if ret := gpuInst.Destroy(); ret != nvml.SUCCESS {
 			klog.ErrorS(fmt.Errorf("destroy gpu instance: %v", ret), "destroy gpu instance")
 		}
+		duration := time.Since(startTime)
+		metrics.SliceProvisionTotal.WithLabelValues("error", spec.Profile, s.NodeName).Inc()
+		metrics.SliceProvisionLatencySeconds.WithLabelValues(spec.Profile, s.NodeName).Observe(duration.Seconds())
 		return "", fmt.Errorf("get CI profile info: %v", ret)
 	}
 
@@ -452,6 +492,9 @@ func (s *Server) createMigSlice(alloc *instav1.AllocationClaim) (string, error) 
 		if ret := gpuInst.Destroy(); ret != nvml.SUCCESS {
 			klog.ErrorS(fmt.Errorf("destroy gpu instance: %v", ret), "destroy gpu instance")
 		}
+		duration := time.Since(startTime)
+		metrics.SliceProvisionTotal.WithLabelValues("error", spec.Profile, s.NodeName).Inc()
+		metrics.SliceProvisionLatencySeconds.WithLabelValues(spec.Profile, s.NodeName).Observe(duration.Seconds())
 		return "", fmt.Errorf("create compute instance: %v", ret)
 	}
 
@@ -463,8 +506,15 @@ func (s *Server) createMigSlice(alloc *instav1.AllocationClaim) (string, error) 
 		if ret := gpuInst.Destroy(); ret != nvml.SUCCESS {
 			klog.ErrorS(fmt.Errorf("destroy gpu instance: %v", ret), "destroy gpu instance")
 		}
+		duration := time.Since(startTime)
+		metrics.SliceProvisionTotal.WithLabelValues("error", spec.Profile, s.NodeName).Inc()
+		metrics.SliceProvisionLatencySeconds.WithLabelValues(spec.Profile, s.NodeName).Observe(duration.Seconds())
 		return "", err
 	}
+
+	duration := time.Since(startTime)
+	metrics.SliceProvisionTotal.WithLabelValues("success", spec.Profile, s.NodeName).Inc()
+	metrics.SliceProvisionLatencySeconds.WithLabelValues(spec.Profile, s.NodeName).Observe(duration.Seconds())
 
 	klog.InfoS("Created MIG slice", "gpu", spec.GPUUUID, "profile", spec.Profile, "migUUID", uuid)
 	return uuid, nil

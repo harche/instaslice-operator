@@ -19,40 +19,73 @@ import (
 	slicev1alpha1 "github.com/openshift/instaslice-operator/pkg/apis/dasoperator/v1alpha1"
 	operatorconfigclient "github.com/openshift/instaslice-operator/pkg/generated/clientset/versioned"
 	operatorclientinformers "github.com/openshift/instaslice-operator/pkg/generated/informers/externalversions"
+	"github.com/openshift/instaslice-operator/pkg/metrics"
 	instaslicecontroller "github.com/openshift/instaslice-operator/pkg/operator/controllers/instaslice"
 	"github.com/openshift/instaslice-operator/pkg/operator/operatorclient"
+	"github.com/openshift/instaslice-operator/pkg/version"
 )
 
 var operatorNamespace = "das-operator"
 
 func RunOperator(ctx context.Context, cc *controllercmd.ControllerContext) error {
+	// Set up metrics
+	versionInfo := version.Get()
+	metrics.Info.WithLabelValues(versionInfo.GitVersion, versionInfo.GitCommit, versionInfo.BuildDate).Set(1)
+
+	emulatedMode := os.Getenv("EMULATED_MODE")
+	var emMode slicev1alpha1.EmulatedMode
+	if emulatedMode == "" {
+		emMode = slicev1alpha1.EmulatedModeDisabled
+	} else {
+		emMode = slicev1alpha1.EmulatedMode(emulatedMode)
+	}
+	metrics.EmulatedMode.WithLabelValues(string(emMode)).Set(1)
+
+	// Start metrics server
+	metricsPort := os.Getenv("METRICS_PORT")
+	if metricsPort == "" {
+		metricsPort = "8080"
+	}
+	metricsServer := metrics.NewServer(metricsPort)
+	go func() {
+		if err := metricsServer.Start(ctx); err != nil {
+			klog.Errorf("Metrics server error: %v", err)
+		}
+	}()
+
 	kubeClient, err := kubernetes.NewForConfig(cc.ProtoKubeConfig)
 	if err != nil {
+		metrics.ErrorsTotal.WithLabelValues("operator", "kube_client_creation_failed").Inc()
 		return err
 	}
 
 	dynamicClient, err := dynamic.NewForConfig(cc.ProtoKubeConfig)
 	if err != nil {
+		metrics.ErrorsTotal.WithLabelValues("operator", "dynamic_client_creation_failed").Inc()
 		return err
 	}
 
 	apiextensionClient, err := apiextclientv1.NewForConfig(cc.KubeConfig)
 	if err != nil {
+		metrics.ErrorsTotal.WithLabelValues("operator", "apiextension_client_creation_failed").Inc()
 		return err
 	}
 
 	discoveryClient, err := discovery.NewDiscoveryClientForConfig(cc.KubeConfig)
 	if err != nil {
+		metrics.ErrorsTotal.WithLabelValues("operator", "discovery_client_creation_failed").Inc()
 		return err
 	}
 
 	appsClient, err := appsv1client.NewForConfig(cc.KubeConfig)
 	if err != nil {
+		metrics.ErrorsTotal.WithLabelValues("operator", "apps_client_creation_failed").Inc()
 		return err
 	}
 
 	operatorConfigClient, err := operatorconfigclient.NewForConfig(cc.KubeConfig)
 	if err != nil {
+		metrics.ErrorsTotal.WithLabelValues("operator", "operator_config_client_creation_failed").Inc()
 		return err
 	}
 	operatorConfigInformers := operatorclientinformers.NewSharedInformerFactory(operatorConfigClient, 10*time.Minute)
@@ -72,14 +105,6 @@ func RunOperator(ctx context.Context, cc *controllercmd.ControllerContext) error
 		Lister:            operatorConfigInformers.OpenShiftOperator().V1alpha1().DASOperators().Lister(),
 		OperatorClient:    operatorConfigClient.OpenShiftOperatorV1alpha1(),
 		OperatorNamespace: namespace,
-	}
-
-	emulatedMode := os.Getenv("EMULATED_MODE")
-	var emMode slicev1alpha1.EmulatedMode
-	if emulatedMode == "" {
-		emMode = slicev1alpha1.EmulatedModeDisabled
-	} else {
-		emMode = slicev1alpha1.EmulatedMode(emulatedMode)
 	}
 
 	targetConfigReconciler := NewTargetConfigReconciler(

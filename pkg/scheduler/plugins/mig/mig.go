@@ -25,6 +25,7 @@ import (
 	instaclient "github.com/openshift/instaslice-operator/pkg/generated/clientset/versioned"
 	instainformers "github.com/openshift/instaslice-operator/pkg/generated/informers/externalversions"
 	instalisters "github.com/openshift/instaslice-operator/pkg/generated/listers/dasoperator/v1alpha1"
+	"github.com/openshift/instaslice-operator/pkg/metrics"
 	frameworkruntime "k8s.io/kubernetes/pkg/scheduler/framework/runtime"
 )
 
@@ -211,25 +212,41 @@ func New(ctx context.Context, args runtime.Object, handle framework.Handle) (fra
 
 // Filter checks if the given node has an available MIG slice for the pod.
 func (p *Plugin) Filter(ctx context.Context, state *framework.CycleState, pod *corev1.Pod, nodeInfo *framework.NodeInfo) *framework.Status {
+	startTime := time.Now()
 	node := nodeInfo.Node()
 	if node == nil {
+		duration := time.Since(startTime)
+		metrics.SchedulerFilterAttemptsTotal.WithLabelValues("error", "unknown").Inc()
+		metrics.SchedulerPrebindLatencySeconds.WithLabelValues("unknown").Observe(duration.Seconds())
 		return framework.NewStatus(framework.Error, "node not found")
 	}
 	if val, ok := node.Labels["nvidia.com/mig.capable"]; !ok || val != "true" {
+		duration := time.Since(startTime)
+		metrics.SchedulerFilterAttemptsTotal.WithLabelValues("unschedulable", node.Name).Inc()
+		metrics.SchedulerPrebindLatencySeconds.WithLabelValues(node.Name).Observe(duration.Seconds())
 		return framework.NewStatus(framework.Unschedulable, "node not MIG capable")
 	}
 	klog.InfoS("checking MIG availability", "pod", klog.KObj(pod), "node", node.Name)
 
 	instObj, err := p.instasliceLister.NodeAccelerators(p.namespace).Get(node.Name)
 	if err != nil {
+		duration := time.Since(startTime)
+		metrics.SchedulerFilterAttemptsTotal.WithLabelValues("unschedulable", node.Name).Inc()
+		metrics.SchedulerPrebindLatencySeconds.WithLabelValues(node.Name).Observe(duration.Seconds())
 		return framework.NewStatus(framework.Unschedulable, err.Error())
 	}
 	if instObj.Spec.AcceleratorType != "" && instObj.Spec.AcceleratorType != "nvidia-mig" {
+		duration := time.Since(startTime)
+		metrics.SchedulerFilterAttemptsTotal.WithLabelValues("unschedulable", node.Name).Inc()
+		metrics.SchedulerPrebindLatencySeconds.WithLabelValues(node.Name).Observe(duration.Seconds())
 		return framework.NewStatus(framework.Unschedulable, fmt.Sprintf("unsupported acceleratorType %s", instObj.Spec.AcceleratorType))
 	}
 	var resources instav1alpha1.DiscoveredNodeResources
 	if len(instObj.Status.NodeResources.Raw) > 0 {
 		if err := json.Unmarshal(instObj.Status.NodeResources.Raw, &resources); err != nil {
+			duration := time.Since(startTime)
+			metrics.SchedulerFilterAttemptsTotal.WithLabelValues("error", node.Name).Inc()
+			metrics.SchedulerPrebindLatencySeconds.WithLabelValues(node.Name).Observe(duration.Seconds())
 			return framework.AsStatus(err)
 		}
 	}
@@ -261,6 +278,9 @@ func (p *Plugin) Filter(ctx context.Context, state *framework.CycleState, pod *c
 
 	profiles := getPodProfileNames(pod)
 	if len(profiles) == 0 {
+		duration := time.Since(startTime)
+		metrics.SchedulerFilterAttemptsTotal.WithLabelValues("success", node.Name).Inc()
+		metrics.SchedulerPrebindLatencySeconds.WithLabelValues(node.Name).Observe(duration.Seconds())
 		return nil
 	}
 
@@ -415,12 +435,17 @@ func (p *Plugin) Filter(ctx context.Context, state *framework.CycleState, pod *c
 	if len(claims) > 0 {
 		klog.InfoS("AllocationClaims staged", "pod", klog.KObj(pod), "node", node.Name, "claims", claims)
 	}
+	duration := time.Since(startTime)
+	metrics.SchedulerFilterAttemptsTotal.WithLabelValues("success", node.Name).Inc()
+	metrics.SchedulerPrebindLatencySeconds.WithLabelValues(node.Name).Observe(duration.Seconds())
 	return nil
 }
 
 // Score favors nodes with the most remaining free MIG slice capacity after
 // accounting for all AllocationClaims including those staged for this Pod.
 func (p *Plugin) Score(ctx context.Context, state *framework.CycleState, pod *corev1.Pod, nodeName string) (int64, *framework.Status) {
+	metrics.SchedulerScoreInvocationsTotal.WithLabelValues(nodeName).Inc()
+
 	instObj, err := p.instasliceLister.NodeAccelerators(p.namespace).Get(nodeName)
 	if err != nil {
 		return 0, framework.AsStatus(err)
@@ -458,13 +483,18 @@ func (p *Plugin) Score(ctx context.Context, state *framework.CycleState, pod *co
 // PreBind finalizes AllocationClaims on the chosen node and cleans up staged
 // claims on the other nodes.
 func (p *Plugin) PreBind(ctx context.Context, state *framework.CycleState, pod *corev1.Pod, nodeName string) *framework.Status {
+	startTime := time.Now()
 	klog.InfoS("pre-binding pod to node", "pod", klog.KObj(pod), "node", nodeName)
 	items, err := p.allocationIndexer.ByIndex("pod-uid", string(pod.UID))
 	if err != nil {
+		duration := time.Since(startTime)
+		metrics.SchedulerPrebindLatencySeconds.WithLabelValues(nodeName).Observe(duration.Seconds())
 		return framework.AsStatus(err)
 	}
 
 	if len(items) == 0 {
+		duration := time.Since(startTime)
+		metrics.SchedulerPrebindLatencySeconds.WithLabelValues(nodeName).Observe(duration.Seconds())
 		klog.InfoS("no staged AllocationClaims found for pod", "pod", klog.KObj(pod), "node", nodeName)
 		return framework.AsStatus(fmt.Errorf("no staged AllocationClaims found for pod %s on node %s", pod.Name, nodeName))
 	}
@@ -481,15 +511,22 @@ func (p *Plugin) PreBind(ctx context.Context, state *framework.CycleState, pod *
 		if string(spec.Nodename) == nodeName {
 			if alloc.Status.State != instav1alpha1.AllocationClaimStatusCreated {
 				if _, err := deviceplugins.UpdateAllocationStatus(ctx, p.instaClient, alloc, instav1alpha1.AllocationClaimStatusCreated); err != nil {
+					duration := time.Since(startTime)
+					metrics.SchedulerPrebindLatencySeconds.WithLabelValues(nodeName).Observe(duration.Seconds())
 					return framework.AsStatus(err)
 				}
 			}
 		} else {
 			if err := p.instaClient.OpenShiftOperatorV1alpha1().AllocationClaims(alloc.Namespace).Delete(ctx, alloc.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+				duration := time.Since(startTime)
+				metrics.SchedulerPrebindLatencySeconds.WithLabelValues(nodeName).Observe(duration.Seconds())
 				return framework.AsStatus(err)
 			}
 		}
 	}
+
+	duration := time.Since(startTime)
+	metrics.SchedulerPrebindLatencySeconds.WithLabelValues(nodeName).Observe(duration.Seconds())
 	return nil
 }
 

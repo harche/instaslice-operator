@@ -27,6 +27,7 @@ import (
 	instasliceoperatorv1alphaclientset "github.com/openshift/instaslice-operator/pkg/generated/clientset/versioned/typed/dasoperator/v1alpha1"
 	operatorclientv1alpha1informers "github.com/openshift/instaslice-operator/pkg/generated/informers/externalversions/dasoperator/v1alpha1"
 
+	"github.com/openshift/instaslice-operator/pkg/metrics"
 	"github.com/openshift/instaslice-operator/pkg/operator/operatorclient"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
@@ -123,21 +124,35 @@ func NewTargetConfigReconciler(
 }
 
 func (c *TargetConfigReconciler) sync(ctx context.Context, syncCtx factory.SyncContext) error {
+	startTime := time.Now()
+
 	found, err := isResourceRegistered(c.discoveryClient, schema.GroupVersionKind{
 		Group:   "cert-manager.io",
 		Version: "v1",
 		Kind:    "Issuer",
 	})
 	if err != nil {
+		duration := time.Since(startTime)
+		metrics.ReconcileTotal.WithLabelValues("TargetConfigReconciler", "error").Inc()
+		metrics.ReconcileDurationSeconds.WithLabelValues("TargetConfigReconciler").Observe(duration.Seconds())
+		metrics.ErrorsTotal.WithLabelValues("target_config_reconciler", "cert_manager_check_failed").Inc()
 		return fmt.Errorf("unable to check cert-manager is installed: %w", err)
 	}
 
 	if !found {
+		duration := time.Since(startTime)
+		metrics.ReconcileTotal.WithLabelValues("TargetConfigReconciler", "error").Inc()
+		metrics.ReconcileDurationSeconds.WithLabelValues("TargetConfigReconciler").Observe(duration.Seconds())
+		metrics.ErrorsTotal.WithLabelValues("target_config_reconciler", "cert_manager_not_installed").Inc()
 		return fmt.Errorf("please make sure that cert-manager is installed on your cluster")
 	}
 
 	sliceOperator, err := c.operatorClient.Get(ctx, operatorclient.OperatorConfigName, metav1.GetOptions{})
 	if err != nil {
+		duration := time.Since(startTime)
+		metrics.ReconcileTotal.WithLabelValues("TargetConfigReconciler", "error").Inc()
+		metrics.ReconcileDurationSeconds.WithLabelValues("TargetConfigReconciler").Observe(duration.Seconds())
+		metrics.ErrorsTotal.WithLabelValues("target_config_reconciler", "get_operator_config_failed").Inc()
 		return fmt.Errorf("unable to get operator configuration %s/%s: %w", c.namespace, operatorclient.OperatorConfigName, err)
 	}
 
@@ -153,38 +168,90 @@ func (c *TargetConfigReconciler) sync(ctx context.Context, syncCtx factory.SyncC
 	klog.V(2).InfoS("Got operator config", "emulated_mode", c.emulatedMode)
 
 	if _, _, err := c.manageDaemonset(ctx, ownerReference); err != nil {
+		duration := time.Since(startTime)
+		metrics.ReconcileTotal.WithLabelValues("TargetConfigReconciler", "error").Inc()
+		metrics.ReconcileDurationSeconds.WithLabelValues("TargetConfigReconciler").Observe(duration.Seconds())
+		metrics.ErrorsTotal.WithLabelValues("target_config_reconciler", "manage_daemonset_failed").Inc()
 		return err
 	}
 
 	if _, _, err := c.manageScheduler(ctx, ownerReference); err != nil {
+		duration := time.Since(startTime)
+		metrics.ReconcileTotal.WithLabelValues("TargetConfigReconciler", "error").Inc()
+		metrics.ReconcileDurationSeconds.WithLabelValues("TargetConfigReconciler").Observe(duration.Seconds())
+		metrics.ErrorsTotal.WithLabelValues("target_config_reconciler", "manage_scheduler_failed").Inc()
 		return err
 	}
 
 	if err := c.manageMutatingWebhookDeployment(ctx, ownerReference); err != nil {
+		duration := time.Since(startTime)
+		metrics.ReconcileTotal.WithLabelValues("TargetConfigReconciler", "error").Inc()
+		metrics.ReconcileDurationSeconds.WithLabelValues("TargetConfigReconciler").Observe(duration.Seconds())
+		metrics.ErrorsTotal.WithLabelValues("target_config_reconciler", "manage_webhook_deployment_failed").Inc()
 		return err
 	}
 
 	if err := c.manageMutatingWebhookService(ctx, ownerReference); err != nil {
+		duration := time.Since(startTime)
+		metrics.ReconcileTotal.WithLabelValues("TargetConfigReconciler", "error").Inc()
+		metrics.ReconcileDurationSeconds.WithLabelValues("TargetConfigReconciler").Observe(duration.Seconds())
+		metrics.ErrorsTotal.WithLabelValues("target_config_reconciler", "manage_webhook_service_failed").Inc()
+		return err
+	}
+
+	if err := c.manageMetricsService(ctx, ownerReference); err != nil {
+		duration := time.Since(startTime)
+		metrics.ReconcileTotal.WithLabelValues("TargetConfigReconciler", "error").Inc()
+		metrics.ReconcileDurationSeconds.WithLabelValues("TargetConfigReconciler").Observe(duration.Seconds())
+		metrics.ErrorsTotal.WithLabelValues("target_config_reconciler", "manage_metrics_service_failed").Inc()
+		return err
+	}
+
+	if err := c.manageServiceMonitor(ctx, ownerReference); err != nil {
+		duration := time.Since(startTime)
+		metrics.ReconcileTotal.WithLabelValues("TargetConfigReconciler", "error").Inc()
+		metrics.ReconcileDurationSeconds.WithLabelValues("TargetConfigReconciler").Observe(duration.Seconds())
+		metrics.ErrorsTotal.WithLabelValues("target_config_reconciler", "manage_servicemonitor_failed").Inc()
 		return err
 	}
 
 	if err := c.manageMutatingWebhook(ctx, ownerReference); err != nil {
+		duration := time.Since(startTime)
+		metrics.ReconcileTotal.WithLabelValues("TargetConfigReconciler", "error").Inc()
+		metrics.ReconcileDurationSeconds.WithLabelValues("TargetConfigReconciler").Observe(duration.Seconds())
+		metrics.ErrorsTotal.WithLabelValues("target_config_reconciler", "manage_webhook_failed").Inc()
 		return err
 	}
 	_, _, err = c.manageIssuerCR(ctx, ownerReference)
 	if err != nil {
+		duration := time.Since(startTime)
+		metrics.ReconcileTotal.WithLabelValues("TargetConfigReconciler", "error").Inc()
+		metrics.ReconcileDurationSeconds.WithLabelValues("TargetConfigReconciler").Observe(duration.Seconds())
+		metrics.ErrorsTotal.WithLabelValues("target_config_reconciler", "manage_issuer_cr_failed").Inc()
 		return err
 	}
 
 	_, _, err = c.manageCertificateWebhookCR(ctx, ownerReference)
 	if err != nil {
+		duration := time.Since(startTime)
+		metrics.ReconcileTotal.WithLabelValues("TargetConfigReconciler", "error").Inc()
+		metrics.ReconcileDurationSeconds.WithLabelValues("TargetConfigReconciler").Observe(duration.Seconds())
+		metrics.ErrorsTotal.WithLabelValues("target_config_reconciler", "manage_certificate_cr_failed").Inc()
 		return err
 	}
 
 	_, _, err = c.manageWebhookCertSecret()
 	if err != nil {
+		duration := time.Since(startTime)
+		metrics.ReconcileTotal.WithLabelValues("TargetConfigReconciler", "error").Inc()
+		metrics.ReconcileDurationSeconds.WithLabelValues("TargetConfigReconciler").Observe(duration.Seconds())
+		metrics.ErrorsTotal.WithLabelValues("target_config_reconciler", "manage_webhook_cert_secret_failed").Inc()
 		return err
 	}
+
+	duration := time.Since(startTime)
+	metrics.ReconcileTotal.WithLabelValues("TargetConfigReconciler", "success").Inc()
+	metrics.ReconcileDurationSeconds.WithLabelValues("TargetConfigReconciler").Observe(duration.Seconds())
 
 	return nil
 }
@@ -230,6 +297,46 @@ func (c *TargetConfigReconciler) manageMutatingWebhookService(ctx context.Contex
 		ownerReference,
 	}
 	_, _, err := resourceapply.ApplyService(ctx, c.kubeClient.CoreV1(), c.eventRecorder, required)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *TargetConfigReconciler) manageMetricsService(ctx context.Context, ownerReference metav1.OwnerReference) error {
+	required := resourceread.ReadServiceV1OrDie(bindata.MustAsset("assets/instaslice-operator/metrics-service.yaml"))
+	required.Namespace = c.namespace
+	required.OwnerReferences = []metav1.OwnerReference{
+		ownerReference,
+	}
+	_, _, err := resourceapply.ApplyService(ctx, c.kubeClient.CoreV1(), c.eventRecorder, required)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *TargetConfigReconciler) manageServiceMonitor(ctx context.Context, ownerReference metav1.OwnerReference) error {
+	gvr := schema.GroupVersionResource{
+		Group:    "monitoring.coreos.com",
+		Version:  "v1",
+		Resource: "servicemonitors",
+	}
+
+	serviceMonitor, err := resourceread.ReadGenericWithUnstructured(bindata.MustAsset("assets/instaslice-operator/servicemonitor.yaml"))
+	if err != nil {
+		return err
+	}
+	serviceMonitorAsUnstructured, ok := serviceMonitor.(*unstructured.Unstructured)
+	if !ok {
+		return fmt.Errorf("servicemonitor is not an Unstructured")
+	}
+	serviceMonitorAsUnstructured.SetNamespace(c.namespace)
+	ownerReferences := serviceMonitorAsUnstructured.GetOwnerReferences()
+	ownerReferences = append(ownerReferences, ownerReference)
+	serviceMonitorAsUnstructured.SetOwnerReferences(ownerReferences)
+
+	_, _, err = resourceapply.ApplyUnstructuredResourceImproved(ctx, c.dynamicClient, c.eventRecorder, serviceMonitorAsUnstructured, c.resourceCache, gvr, nil, nil)
 	if err != nil {
 		return err
 	}
