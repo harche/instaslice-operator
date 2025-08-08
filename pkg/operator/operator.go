@@ -17,12 +17,13 @@ import (
 	"k8s.io/klog/v2"
 
 	slicev1alpha1 "github.com/openshift/instaslice-operator/pkg/apis/dasoperator/v1alpha1"
+	"github.com/openshift/instaslice-operator/pkg/constants"
 	operatorconfigclient "github.com/openshift/instaslice-operator/pkg/generated/clientset/versioned"
 	operatorclientinformers "github.com/openshift/instaslice-operator/pkg/generated/informers/externalversions"
 	"github.com/openshift/instaslice-operator/pkg/operator/operatorclient"
 )
 
-var operatorNamespace = "das-operator"
+var operatorNamespace = constants.DefaultOperatorNamespace
 
 func RunOperator(ctx context.Context, cc *controllercmd.ControllerContext) error {
 	kubeClient, err := kubernetes.NewForConfig(cc.ProtoKubeConfig)

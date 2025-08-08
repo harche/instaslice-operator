@@ -160,7 +160,7 @@ func New(ctx context.Context, args runtime.Object, handle framework.Handle) (fra
 	if ns == "" {
 		ns = os.Getenv("INSTASLICE_NAMESPACE")
 		if ns == "" {
-			ns = "das-operator"
+			ns = "openshift-das-operator"
 		}
 	}
 

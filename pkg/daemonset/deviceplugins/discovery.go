@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"strings"
 
 	nvml "github.com/NVIDIA/go-nvml/pkg/nvml"
@@ -24,8 +25,27 @@ import (
 )
 
 const (
-	instasliceNamespace = "das-operator"
+	// instasliceNamespace is the namespace used by the daemonset to read/write
+	// operator-owned CRs. It is derived at runtime from the pod's namespace
+	// when empty, defaulting to the operator default.
+	instasliceNamespaceEnv = "INSTASLICE_NAMESPACE"
 )
+
+var instasliceNamespace = resolveInstasliceNamespace()
+
+func resolveInstasliceNamespace() string {
+	if ns := strings.TrimSpace(os.Getenv(instasliceNamespaceEnv)); ns != "" {
+		return ns
+	}
+	// Fallback to the namespace of the running pod via the standard service account path
+	// If not available, default to the well-known namespace.
+	if data, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace"); err == nil {
+		if ns := strings.TrimSpace(string(data)); ns != "" {
+			return ns
+		}
+	}
+	return "openshift-das-operator"
+}
 
 // MigGpuDiscoverer is an interface for MIG GPU discovery implementations.
 // Discover returns the NodeAccelerator object containing the discovered

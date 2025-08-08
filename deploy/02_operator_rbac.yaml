@@ -193,7 +193,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: das-operator
-    namespace: das-operator
+    namespace: openshift-das-operator
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -206,7 +206,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: das-operator
-  namespace: das-operator
+  namespace: openshift-das-operator
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -216,7 +216,7 @@ kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: das-operator
-  namespace: das-operator
+  namespace: openshift-das-operator
 rules:
 - apiGroups:
     - ""
@@ -235,11 +235,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: das-operator
-  namespace: das-operator
+  namespace: openshift-das-operator
 subjects:
 - kind: ServiceAccount
   name: das-operator
-  namespace: das-operator
+  namespace: openshift-das-operator
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -252,7 +252,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: das-operator
-  namespace: das-operator
+  namespace: openshift-das-operator
 roleRef:
   kind: ClusterRole
   name: system:extension-apiserver-authentication-reader

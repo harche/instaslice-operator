@@ -293,6 +293,11 @@ func (c *TargetConfigReconciler) manageScheduler(ctx context.Context, ownerRefer
 	schedulerCRbac.OwnerReferences = []metav1.OwnerReference{
 		ownerReference,
 	}
+	for i := range schedulerCRbac.Subjects {
+		if schedulerCRbac.Subjects[i].Kind == "ServiceAccount" {
+			schedulerCRbac.Subjects[i].Namespace = c.namespace
+		}
+	}
 	_, _, err = resourceapply.ApplyClusterRoleBinding(ctx, c.kubeClient.RbacV1(), c.eventRecorder, schedulerCRbac)
 	if err != nil {
 		return nil, false, err
@@ -312,6 +317,11 @@ func (c *TargetConfigReconciler) manageScheduler(ctx context.Context, ownerRefer
 	schedulerRoleBinding.Namespace = c.namespace
 	schedulerRoleBinding.OwnerReferences = []metav1.OwnerReference{
 		ownerReference,
+	}
+	for i := range schedulerRoleBinding.Subjects {
+		if schedulerRoleBinding.Subjects[i].Kind == "ServiceAccount" {
+			schedulerRoleBinding.Subjects[i].Namespace = c.namespace
+		}
 	}
 	_, _, err = resourceapply.ApplyClusterRoleBinding(ctx, c.kubeClient.RbacV1(), c.eventRecorder, schedulerRoleBinding)
 	if err != nil {

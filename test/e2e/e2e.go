@@ -72,7 +72,7 @@ var (
 )
 
 const (
-	dasOperatorNamespace    = "das-operator"
+	dasOperatorNamespace    = "openshift-das-operator"
 	testNamespace           = "das-e2e"
 	multiTestNamespace      = "das-e2e-multi"
 	multiResourceNamespace  = "das-e2e-multires"
@@ -668,7 +668,7 @@ var _ = Describe("MIG placement start index", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 		}
 
-		insts, err := dasClient.OpenShiftOperatorV1alpha1().NodeAccelerators("das-operator").List(context.Background(), metav1.ListOptions{})
+		insts, err := dasClient.OpenShiftOperatorV1alpha1().NodeAccelerators("openshift-das-operator").List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		gpuCount := 0
@@ -725,7 +725,7 @@ var _ = Describe("MIG placement start index", Ordered, func() {
 
 	It("should set start index to 0 in AllocationClaims", func(ctx SpecContext) {
 		Eventually(func() (bool, error) {
-			allocs, err := dasClient.OpenShiftOperatorV1alpha1().AllocationClaims("das-operator").List(ctx, metav1.ListOptions{})
+			allocs, err := dasClient.OpenShiftOperatorV1alpha1().AllocationClaims("openshift-das-operator").List(ctx, metav1.ListOptions{})
 			if err != nil {
 				return false, err
 			}

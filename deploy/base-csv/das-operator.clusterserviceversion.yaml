@@ -2,7 +2,7 @@ apiVersion: operators.coreos.com/v1alpha1
 kind: ClusterServiceVersion
 metadata:
   name: das-operator.base
-  namespace: das-operator
+  namespace: openshift-das-operator
   annotations:
     alm-examples:
     features.operators.openshift.io/cnf: "false"
@@ -15,7 +15,7 @@ metadata:
     features.operators.openshift.io/token-auth-aws: "false"
     features.operators.openshift.io/token-auth-azure: "false"
     features.operators.openshift.io/token-auth-gcp: "false"
-    operatorframework.io/suggested-namespace: das-operator
+    operatorframework.io/suggested-namespace: openshift-das-operator
     operators.openshift.io/valid-subscription: '["OpenShift Kubernetes Engine", "OpenShift Container Platform", "OpenShift Platform Plus"]'
     capabilities: Basic Install
     categories: Drivers and plugins
@@ -51,7 +51,7 @@ spec:
   - image: quay.io/redhat-user-workloads/dynamicacceleratorsl-tenant/instaslice-scheduler-next:latest
     name: instaslice-scheduler-next
   - image: quay.io/redhat-user-workloads/dynamicacceleratorsl-tenant/instaslice-daemonset-next:latest
-    name: instaslice-daemonset-next   
+    name: instaslice-daemonset-next
   keywords:
   - GPU Slicing
   - MIG

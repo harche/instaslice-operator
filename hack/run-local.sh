@@ -26,4 +26,4 @@ ${KUBECTL} apply -f ${TMP_DIR}/03_instaslice_operator.cr.yaml
 RELATED_IMAGE_DAEMONSET_IMAGE=${DAEMONSET_IMAGE} \
   RELATED_IMAGE_WEBHOOK_IMAGE=${WEBHOOK_IMAGE} \
   RELATED_IMAGE_SCHEDULER_IMAGE=${SCHEDULER_IMAGE} \
-  go run cmd/das-operator/main.go operator --namespace=das-operator --kubeconfig="${KUBECONFIG}"
+  go run cmd/das-operator/main.go operator --namespace=${NAMESPACE:-openshift-das-operator} --kubeconfig="${KUBECONFIG}"

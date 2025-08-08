@@ -9,6 +9,6 @@ metadata:
     app.kubernetes.io/name: certificate
     app.kubernetes.io/part-of: das-operator
   name: das-selfsigned-issuer
-  namespace: das-operator
+  namespace: openshift-das-operator
 spec:
   selfSigned: {}

@@ -91,13 +91,13 @@ func StartDevicePlugins(ctx context.Context, kubeConfig *rest.Config) error {
 		discoverer = &EmulatedMigGpuDiscoverer{
 			ctx:         ctx,
 			nodeName:    nodeName,
-			instaClient: csOp.OpenShiftOperatorV1alpha1().NodeAccelerators(instasliceNamespace),
+			instaClient: csOp.OpenShiftOperatorV1alpha1().NodeAccelerators(resolveInstasliceNamespace()),
 		}
 	} else {
 		discoverer = &RealMigGpuDiscoverer{
 			ctx:           ctx,
 			nodeName:      nodeName,
-			instaClient:   csOp.OpenShiftOperatorV1alpha1().NodeAccelerators(instasliceNamespace),
+			instaClient:   csOp.OpenShiftOperatorV1alpha1().NodeAccelerators(resolveInstasliceNamespace()),
 			dynamicClient: dynClient,
 		}
 	}
@@ -111,7 +111,7 @@ func StartDevicePlugins(ctx context.Context, kubeConfig *rest.Config) error {
 	// Setup informer to watch AllocationClaim resources. We index allocations by
 	// the target node name to easily query allocations for this node.
 	allocInformerFactory := instainformers.NewSharedInformerFactoryWithOptions(
-		csOp, 10*time.Minute, instainformers.WithNamespace(instasliceNamespace))
+		csOp, 10*time.Minute, instainformers.WithNamespace(resolveInstasliceNamespace()))
 	allocInformer := allocInformerFactory.OpenShiftOperator().V1alpha1().AllocationClaims().Informer()
 
 	// Index allocations by nodename, by the composite "node-gpu" key and by

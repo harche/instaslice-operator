@@ -33,7 +33,7 @@ metadata:
     features.operators.openshift.io/token-auth-aws: "false"
     features.operators.openshift.io/token-auth-azure: "false"
     features.operators.openshift.io/token-auth-gcp: "false"
-    operatorframework.io/suggested-namespace: das-operator
+    operatorframework.io/suggested-namespace: openshift-das-operator
     operators.openshift.io/valid-subscription: '["OpenShift Kubernetes Engine", "OpenShift
       Container Platform", "OpenShift Platform Plus"]'
     operators.operatorframework.io/builder: operator-sdk-v1.40.0
@@ -41,7 +41,7 @@ metadata:
     repository: https://github.com/openshift/instaslice-operator
     support: https://github.com/openshift/instaslice-operator/issues
   name: das-operator.v0.1.0
-  namespace: das-operator
+  namespace: openshift-das-operator
 spec:
   apiservicedefinitions: {}
   customresourcedefinitions:

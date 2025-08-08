@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: das-daemonset
-  namespace: das-operator
+  namespace: openshift-das-operator
   labels:
     k8s-app: das-daemonset
 spec:

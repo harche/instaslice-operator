@@ -197,7 +197,7 @@ func newPlugin(objs ...runtime.Object) *Plugin {
 			return []string{string(spec.PodRef.UID)}, nil
 		},
 	})
-	ns := "das-operator"
+	ns := "openshift-das-operator"
 	for _, obj := range objs {
 		switch o := obj.(type) {
 		case *instav1.NodeAccelerator:

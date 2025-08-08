@@ -12,7 +12,7 @@ import (
 
 func TestUpdateAllocationStatusSetsCondition(t *testing.T) {
 	alloc := &instav1.AllocationClaim{
-		ObjectMeta: metav1.ObjectMeta{Name: "a1", Namespace: "das-operator"},
+		ObjectMeta: metav1.ObjectMeta{Name: "a1", Namespace: "openshift-das-operator"},
 	}
 	client := fakeclient.NewSimpleClientset(alloc)
 
@@ -55,7 +55,7 @@ func TestEmulatedDiscoverySetsReadyCondition(t *testing.T) {
 
 func TestAllocationStatusConditionOrder(t *testing.T) {
 	alloc := &instav1.AllocationClaim{
-		ObjectMeta: metav1.ObjectMeta{Name: "a1", Namespace: "das-operator"},
+		ObjectMeta: metav1.ObjectMeta{Name: "a1", Namespace: "openshift-das-operator"},
 	}
 	client := fakeclient.NewSimpleClientset(alloc)
 

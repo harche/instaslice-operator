@@ -177,7 +177,7 @@ func generateFakeCapacityBase(nodeName, gpuName, memory string, placement map[st
 	return &instav1.NodeAccelerator{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      nodeName,
-			Namespace: "das-operator",
+			Namespace: "openshift-das-operator",
 		},
 		Spec: instav1.NodeAcceleratorSpec{
 			AcceleratorType: "nvidia-mig",

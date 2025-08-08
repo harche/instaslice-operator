@@ -20,7 +20,7 @@ _wait_for_controller_to_exist() {
       echo "Timed out for controller"
       return 1
     fi
-    if _kubectl wait --for=condition=Available deployment/instaslice-operator-controller-manager -n das-operator --timeout=120s; then
+    if _kubectl wait --for=condition=Available deployment/instaslice-operator-controller-manager -n openshift-das-operator --timeout=120s; then
       break
     else
       sleep $interval_secs
@@ -39,15 +39,15 @@ _wait_for_daemonset_to_exist() {
       echo "Timed out for daemonset"
       return 1
     fi
-    if _kubectl rollout status daemonset/instaslice-operator-controller-daemonset -n das-operator --timeout=60s --request-timeout=20s; then
+    if _kubectl rollout status daemonset/instaslice-operator-controller-daemonset -n openshift-das-operator --timeout=60s --request-timeout=20s; then
       break
     else
       echo "Instaslice Pods"
-      _kubectl get pods -n das-operator --request-timeout=20s || true
+      _kubectl get pods -n openshift-das-operator --request-timeout=20s || true
       echo "Daemonsets"
-      _kubectl get daemonsets -n das-operator --request-timeout=20s -o yaml || true
+      _kubectl get daemonsets -n openshift-das-operator --request-timeout=20s -o yaml || true
       echo "Deployment logs"
-      _kubectl logs -n das-operator deployment/instaslice-operator-controller-manager --all-containers --request-timeout=20s || true
+      _kubectl logs -n openshift-das-operator deployment/instaslice-operator-controller-manager --all-containers --request-timeout=20s || true
       sleep $interval_secs
     fi
   done

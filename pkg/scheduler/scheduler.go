@@ -17,6 +17,7 @@ import (
 	"k8s.io/kubernetes/cmd/kube-scheduler/app"
 	scheduleroptions "k8s.io/kubernetes/cmd/kube-scheduler/app/options"
 
+	"github.com/openshift/instaslice-operator/pkg/constants"
 	instaclient "github.com/openshift/instaslice-operator/pkg/generated/clientset/versioned"
 	instainformers "github.com/openshift/instaslice-operator/pkg/generated/informers/externalversions"
 	"github.com/openshift/instaslice-operator/pkg/operator/operatorclient"
@@ -47,8 +48,8 @@ func RunScheduler(ctx context.Context, cc *controllercmd.ControllerContext, opts
 	}
 
 	operatorNamespace := cc.OperatorNamespace
-	if operatorNamespace == "openshift-config-managed" {
-		operatorNamespace = "das-operator"
+	if operatorNamespace == "openshift-config-managed" || operatorNamespace == "" {
+		operatorNamespace = constants.DefaultOperatorNamespace
 	}
 
 	opInformerFactory := instainformers.NewSharedInformerFactory(opClientset, 10*time.Minute)

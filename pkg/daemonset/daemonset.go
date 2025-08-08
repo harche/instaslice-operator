@@ -74,8 +74,8 @@ func RunDaemonset(ctx context.Context, cc *controllercmd.ControllerContext) erro
 
 	// Set up operator config informers for dynamic log level
 	operatorNamespace := cc.OperatorNamespace
-	if operatorNamespace == "openshift-config-managed" {
-		operatorNamespace = "das-operator"
+	if operatorNamespace == "openshift-config-managed" || operatorNamespace == "" {
+		operatorNamespace = "openshift-das-operator"
 	}
 	opInformerFactory := instainformers.NewSharedInformerFactory(opClientset, 10*time.Minute)
 	opClient := &operatorclient.DASOperatorSetClient{
